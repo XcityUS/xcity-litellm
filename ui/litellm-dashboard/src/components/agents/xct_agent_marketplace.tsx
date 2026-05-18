@@ -45,7 +45,7 @@ interface XCTAgentMarketplaceProps {
   onAgentAdded?: () => void;
 }
 
-const DEFAULT_GATEWAY_URL = "https://xct-agent-gateway-production.up.railway.app";
+const DEFAULT_GATEWAY_URL = "https://xct-agents-production.up.railway.app";
 
 const XCTAgentMarketplace: React.FC<XCTAgentMarketplaceProps> = ({
   accessToken,
@@ -194,12 +194,12 @@ const XCTAgentMarketplace: React.FC<XCTAgentMarketplaceProps> = ({
               </Title>
             </div>
             <Paragraph>
-              Browse and import 215+ specialized AI agents from the XCT Agent Gateway.
+              Browse and import 168+ specialized AI agents from the XCT Agent Gateway.
               Each agent is a pre-configured expert with domain-specific knowledge and personality.
             </Paragraph>
             <Alert
               message="About XCT Agents"
-              description="These agents are served via the A2A protocol from the XCT Agent Gateway. When imported, they will appear in your agents list with the 'xct-' prefix."
+              description="These agents are served via the A2A protocol from the XCT Agent Gateway (xct-exchange-tokenhub). When imported, they will appear in your agents list with the 'xct-' prefix."
               type="info"
               showIcon
               closable
