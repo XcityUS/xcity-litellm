@@ -417,6 +417,7 @@ from litellm.proxy.middleware.prometheus_auth_middleware import PrometheusAuthMi
 from litellm.proxy.middleware.request_size_limit_middleware import (
     RequestSizeLimitMiddleware,
 )
+from litellm.proxy.middleware.x402_payment_middleware import X402PaymentMiddleware
 from litellm.proxy.ocr_endpoints.endpoints import router as ocr_router
 from litellm.proxy.openai_files_endpoints.files_endpoints import (
     router as openai_files_router,
@@ -15661,6 +15662,9 @@ app.add_middleware(
     get_max_request_size_mb=lambda: general_settings.get("max_request_size_mb"),
     is_request_size_limit_enabled=lambda: premium_user is True,
 )
+# x402 multichain payment gate — runs before auth so unauthenticated agents
+# can pay with on-chain USDC instead of an API key.  Opt-in via X402_ENABLED=true.
+app.add_middleware(X402PaymentMiddleware)
 
 
 async def _stream_mcp_asgi_response(
