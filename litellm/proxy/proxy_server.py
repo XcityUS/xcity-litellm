@@ -417,6 +417,7 @@ from litellm.proxy.middleware.prometheus_auth_middleware import PrometheusAuthMi
 from litellm.proxy.middleware.request_size_limit_middleware import (
     RequestSizeLimitMiddleware,
 )
+from litellm.proxy.x402.middleware import X402Config, X402PaymentMiddleware
 from litellm.proxy.ocr_endpoints.endpoints import router as ocr_router
 from litellm.proxy.openai_files_endpoints.files_endpoints import (
     router as openai_files_router,
@@ -1845,6 +1846,7 @@ jwt_handler = JWTHandler()
 prompt_injection_detection_obj: Optional[_OPTIONAL_PromptInjectionDetection] = None
 store_model_in_db: bool = False
 open_telemetry_logger: Optional[OpenTelemetry] = None
+x402_config: Optional[X402Config] = None  # populated from proxy YAML ``x402`` section
 ### INITIALIZE GLOBAL LOGGING OBJECT ###
 proxy_logging_obj = ProxyLogging(
     user_api_key_cache=user_api_key_cache, premium_user=premium_user
@@ -3856,7 +3858,7 @@ class ProxyConfig:
         """
         Load config values into proxy global state
         """
-        global master_key, user_config_file_path, otel_logging, user_custom_auth, user_custom_auth_path, user_custom_key_generate, user_custom_key_update, user_custom_sso, user_custom_ui_sso_sign_in_handler, use_background_health_checks, use_shared_health_check, health_check_interval, health_check_concurrency, use_queue, proxy_budget_rescheduler_max_time, proxy_budget_rescheduler_min_time, ui_access_mode, litellm_master_key_hash, proxy_batch_write_at, disable_spend_logs, prompt_injection_detection_obj, redis_usage_cache, store_model_in_db, premium_user, open_telemetry_logger, health_check_details, proxy_batch_polling_interval, config_passthrough_endpoints
+        global master_key, user_config_file_path, otel_logging, user_custom_auth, user_custom_auth_path, user_custom_key_generate, user_custom_key_update, user_custom_sso, user_custom_ui_sso_sign_in_handler, use_background_health_checks, use_shared_health_check, health_check_interval, health_check_concurrency, use_queue, proxy_budget_rescheduler_max_time, proxy_budget_rescheduler_min_time, ui_access_mode, litellm_master_key_hash, proxy_batch_write_at, disable_spend_logs, prompt_injection_detection_obj, redis_usage_cache, store_model_in_db, premium_user, open_telemetry_logger, health_check_details, proxy_batch_polling_interval, config_passthrough_endpoints, x402_config
 
         config: dict = await self.get_config(config_file_path=config_file_path)
 
@@ -4348,6 +4350,19 @@ class ProxyConfig:
                     pass_through_endpoints=general_settings["pass_through_endpoints"],
                     config_file_path=config_file_path,
                 )
+
+            ## x402 PAYMENT PROTOCOL ##
+            _x402_raw = config.get("x402", None)
+            if _x402_raw is not None:
+                x402_config = X402Config.from_dict(_x402_raw)
+                verbose_proxy_logger.info(
+                    "x402 payment middleware configured: enabled=%s facilitator=%s network=%s",
+                    x402_config.enabled,
+                    x402_config.facilitator,
+                    x402_config.network,
+                )
+            else:
+                x402_config = None
 
             ## ADMIN UI ACCESS ##
             ui_access_mode = general_settings.get(
@@ -15660,6 +15675,10 @@ app.add_middleware(
     RequestSizeLimitMiddleware,
     get_max_request_size_mb=lambda: general_settings.get("max_request_size_mb"),
     is_request_size_limit_enabled=lambda: premium_user is True,
+)
+app.add_middleware(
+    X402PaymentMiddleware,
+    get_config=lambda: x402_config,
 )
 
 
