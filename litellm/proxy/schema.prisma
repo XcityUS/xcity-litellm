@@ -1510,3 +1510,31 @@ model LiteLLM_OAuthAuthorizationCode {
 
   @@index([client_id, expires_at])
 }
+
+// x402 Payment Protocol — per-request transaction log.
+// Records every x402-verified payment received by the proxy as a Seller.
+// status values: pending | verified | settled | failed
+model LiteLLM_X402Transactions {
+  tx_id               String   @id @default(uuid())
+  request_id          String?  // FK to LiteLLM_SpendLogs.request_id (same LLM call)
+  caller_address      String   // payer wallet address
+  model               String   // model being served
+  chain               String   // e.g. "base", "ethereum"
+  token               String   // e.g. "USDC"
+  amount              BigInt   // smallest token unit (USDC = 6 decimals, 1000000 = $1.00)
+  amount_usd          Decimal  @db.Decimal(18, 6)
+  tx_hash             String?  // on-chain tx hash, set after successful settlement
+  status              String   @default("pending")
+  facilitator_url     String?
+  error_message       String?
+  retry_count         Int      @default(0)
+  settle_attempted_at DateTime?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now()) @updatedAt
+
+  @@index([created_at])
+  @@index([status, created_at])
+  @@index([caller_address, created_at])
+  @@index([model, created_at])
+  @@index([request_id])
+}
