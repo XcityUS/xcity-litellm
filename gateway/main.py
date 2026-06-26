@@ -26,6 +26,7 @@ DatabaseURLSettings.from_env().apply_to_env()
 from litellm.proxy.proxy_server import app
 
 from gateway.routes.allowlist import GATEWAY_EXACT_PATHS, GATEWAY_PATH_PREFIXES
+from gateway.x402_middleware import X402Middleware
 
 
 def _is_gateway_route(route) -> bool:
@@ -57,3 +58,7 @@ async def _gateway_lifespan(app_):
 
 
 app.router.lifespan_context = _gateway_lifespan
+
+# x402 middleware: outer-most layer so it intercepts before auth.
+# When X402_ENABLED is not "true" this is a zero-cost no-op pass-through.
+app.add_middleware(X402Middleware)
