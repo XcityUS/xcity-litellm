@@ -26,6 +26,15 @@ DatabaseURLSettings.from_env().apply_to_env()
 from litellm.proxy.proxy_server import app
 
 from gateway.routes.allowlist import GATEWAY_EXACT_PATHS, GATEWAY_PATH_PREFIXES
+from litellm.proxy.x402.config import X402Config
+from litellm.proxy.x402.middleware import X402Middleware
+
+# Wire x402 payment middleware when X402_ENABLED=true.
+# Must be called at module load (before uvicorn opens the listener) so
+# Starlette can build the correct ASGI middleware stack.
+_x402_config = X402Config.from_env()
+if _x402_config.enabled:
+    app.add_middleware(X402Middleware, config=_x402_config)
 
 
 def _is_gateway_route(route) -> bool:
