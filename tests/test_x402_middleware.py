@@ -31,7 +31,13 @@ _FACILITATOR_VERIFY_URL = "https://x402.org/facilitator/verify"
 
 
 def _make_app(env_overrides: dict) -> Starlette:
-    """Return a minimal Starlette app with X402Middleware applied."""
+    """Return a minimal Starlette app with X402Middleware applied.
+
+    Env vars must remain set until after the middleware is instantiated.
+    Starlette builds the middleware stack lazily on the first request, so we
+    keep the vars alive by forcing an eager build via build_middleware_stack()
+    before restoring the environment.
+    """
     os.environ.update(env_overrides)
     try:
 
@@ -42,6 +48,10 @@ def _make_app(env_overrides: dict) -> Starlette:
         inner.add_route("/v1/chat/completions", _hello, methods=["POST"])
         inner.add_route("/health", _hello, methods=["GET"])
         inner.add_middleware(X402Middleware)
+        # Force Starlette to build the middleware chain now, while env vars are set.
+        # Starlette lazily builds on first __call__; assigning middleware_stack eagerly
+        # ensures X402Middleware.__init__ runs before the env vars are cleaned up.
+        inner.middleware_stack = inner.build_middleware_stack()
         return inner
     finally:
         for k in env_overrides:
