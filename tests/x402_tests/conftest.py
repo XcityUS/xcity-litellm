@@ -98,7 +98,7 @@ def _make_gateway(
         "X402_PAYMENT_ADDRESS": PAYMENT_ADDRESS,
         "X402_AMOUNT_USDC": amount_usdc,
         "X402_FACILITATOR_URL": facilitator_url,
-        "X402_ROUTES": "/v1/chat/completions",
+        "X402_ROUTES": "/v1/chat/completions,/api/v1/x402/pay",
         "X402_RESOURCE_URL": "https://api.test.xcity.us",
         "X402_INTERNAL_KEY": INTERNAL_KEY,
     }
@@ -129,10 +129,27 @@ def _make_gateway(
         async def _health(request: Request) -> JSONResponse:
             return JSONResponse({"status": "ok"})
 
+        async def _x402_pay(request: Request) -> JSONResponse:
+            body = {}
+            try:
+                body = await request.json()
+            except Exception:
+                pass
+            return JSONResponse(
+                {
+                    "status": "payment_verified",
+                    "model": body.get("model"),
+                    "message": body.get("message"),
+                    "network": "eip155:8453",
+                    "token": "USDC",
+                }
+            )
+
         inner = Starlette(
             routes=[
                 Route("/v1/chat/completions", _chat, methods=["POST"]),
                 Route("/health", _health, methods=["GET"]),
+                Route("/api/v1/x402/pay", _x402_pay, methods=["POST"]),
             ]
         )
         inner.add_middleware(X402Middleware)
