@@ -15,6 +15,8 @@ match management routes like `/v1/access_group`, `/v1/tool/{tool_name}/logs`,
 """
 
 GATEWAY_PATH_PREFIXES: tuple[str, ...] = (
+    # x402 pay-per-request demonstration endpoint
+    "/api/v1/x402/",
     # OpenAI-compatible data-plane surface (versioned + unversioned)
     "/v1/chat/",
     "/chat/",
