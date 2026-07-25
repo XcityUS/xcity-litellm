@@ -4790,6 +4790,46 @@ def _complete_langflow(ctx: _CompletionDispatchContext) -> _CompletionDispatchRe
     )
 
 
+GENERATION_ONLY_MODES = {
+    "video_generation": "/v1/videos",
+    "image_generation": "/v1/images/generations",
+}
+
+
+def _raise_if_generation_only_model(
+    model: str,
+    custom_llm_provider: Optional[str],
+    model_info: Optional[dict],
+) -> None:
+    """
+    Fail chat-completion calls against generation-only models (video/image)
+    fast and clearly. Providers accept the request and only error server-side
+    — e.g. BytePlus returns an opaque InternalServerError after >1 min of
+    retries when a Seedance video model is called via chat completions.
+    Mode comes from the deployment's model_info (proxy/router path) or the
+    cost map (direct SDK path); models with no known mode pass through.
+    """
+    mode = model_info.get("mode") if isinstance(model_info, dict) else None
+    if mode not in GENERATION_ONLY_MODES:
+        for key in (
+            f"{custom_llm_provider}/{model}" if custom_llm_provider else None,
+            model,
+        ):
+            if key and key in litellm.model_cost:
+                mode = litellm.model_cost[key].get("mode")
+                break
+    if mode in GENERATION_ONLY_MODES:
+        raise litellm.BadRequestError(
+            message=(
+                f"{model} is a {mode.replace('_', ' ')} model and cannot serve"
+                f" /v1/chat/completions. Call it via {GENERATION_ONLY_MODES[mode]}"
+                " instead."
+            ),
+            model=model,
+            llm_provider=custom_llm_provider or "unknown",
+        )
+
+
 @tracer.wrap()
 @client
 def completion(  # type: ignore
@@ -5117,6 +5157,12 @@ def completion(  # type: ignore
             litellm_params=(
                 GenericLiteLLMParams(**_supplemental_provider_params) if _supplemental_provider_params else None
             ),
+        )
+
+        # Generation-only models (video/image) cannot serve chat completions —
+        # fail fast with an actionable 400 instead of the provider's opaque 500.
+        _raise_if_generation_only_model(
+            model=model, custom_llm_provider=custom_llm_provider, model_info=model_info
         )
 
         ## RESPONSES API BRIDGE LOGIC ## - check early and normalize model name
