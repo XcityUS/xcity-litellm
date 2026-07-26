@@ -20,6 +20,11 @@ class VideoObject(BaseModel):
     seconds: Optional[str] = None
     size: Optional[str] = None
     model: Optional[str] = None
+    # Direct URL to the finished asset, when the provider returns one (e.g.
+    # BytePlus/Ark hands back a signed CDN link). Without this field pydantic
+    # dropped it on serialization, leaving `GET /v1/videos/{id}/content` — which
+    # proxies the whole file — as the only way to reach the bytes.
+    output_url: Optional[str] = None
     usage: Optional[Dict[str, Any]] = None
     _hidden_params: Dict[str, Any] = {}
 
