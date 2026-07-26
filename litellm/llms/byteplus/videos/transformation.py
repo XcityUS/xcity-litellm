@@ -1,5 +1,6 @@
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 from httpx._types import RequestFiles
@@ -295,6 +296,32 @@ class BytePlusVideoConfig(BaseVideoConfig):
         url = f"{api_base}/{VIDEO_TASKS_ENDPOINT}/{encoded}"
         return url, {}
 
+    @staticmethod
+    def _encode_download_url(url: str) -> str:
+        """
+        Percent-encode non-ASCII characters in Ark's signed download URL.
+
+        Ark returns URLs whose path/query can carry non-ASCII (e.g. a
+        prompt-derived object name). Handing those to httpx raises
+        `UnicodeEncodeError: 'ascii' codec can't encode characters ...`,
+        which surfaced as an opaque 500 on GET /v1/videos/{id}/content —
+        the only way to fetch the bytes, since the proxy's OpenAI-shaped
+        VideoObject response drops `output_url`. Already-encoded triplets
+        are preserved (`%` stays safe), so this is idempotent.
+        """
+        parts = urlsplit(url)
+        return urlunsplit(
+            (
+                parts.scheme,
+                parts.netloc.encode("idna").decode("ascii")
+                if any(ord(c) > 127 for c in parts.netloc)
+                else parts.netloc,
+                quote(parts.path, safe="/%:@!$&'()*+,;="),
+                quote(parts.query, safe="/%:@!$&'()*+,;=?"),
+                quote(parts.fragment, safe="/%:@!$&'()*+,;=?"),
+            )
+        )
+
     def _extract_video_url_from_response(self, response_data: Dict[str, Any]) -> str:
         content = response_data.get("content") or {}
         video_url = content.get("video_url") if isinstance(content, dict) else None
@@ -322,7 +349,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
     ) -> bytes:
         video_url = self._extract_video_url_from_response(raw_response.json())
         httpx_client: HTTPHandler = _get_httpx_client()
-        video_response = httpx_client.get(video_url)
+        video_response = httpx_client.get(self._encode_download_url(video_url))
         video_response.raise_for_status()
         return video_response.content
 
@@ -335,7 +362,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         async_httpx_client: AsyncHTTPHandler = get_async_httpx_client(
             llm_provider=litellm.LlmProviders.BYTEPLUS,
         )
-        video_response = await async_httpx_client.get(video_url)
+        video_response = await async_httpx_client.get(self._encode_download_url(video_url))
         video_response.raise_for_status()
         return video_response.content
 
