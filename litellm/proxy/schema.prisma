@@ -531,6 +531,12 @@ model LiteLLM_DeletedVerificationToken {
     user_id                 String?
     team_id                 String?
     agent_id   String?
+    // XCT app tenancy: mirrors LiteLLM_VerificationToken so a deleted key can
+    // be archived with its app attribution intact. Without these the archive
+    // insert fails ("Could not find field at ...data.app_id") and every key
+    // delete 500s.
+    app_id                  String?
+    token_type              String?
     project_id              String?
     permissions             Json     @default("{}")
     max_parallel_requests   Int?
@@ -573,6 +579,7 @@ model LiteLLM_DeletedVerificationToken {
     @@index([deleted_at])
     @@index([user_id])
     @@index([team_id])
+    @@index([app_id])
     @@index([organization_id])
     @@index([key_alias])
     @@index([created_at])
