@@ -44506,6 +44506,25 @@
             "video"
         ]
     },
+    "byteplus/dreamina-seedance-2-5-260628": {
+        "litellm_provider": "byteplus",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1512,
+        "output_cost_per_second_1080p": 0.3742,
+        "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
     "byteplus/seedance-1-0-pro-250528": {
         "litellm_provider": "byteplus",
         "mode": "video_generation",

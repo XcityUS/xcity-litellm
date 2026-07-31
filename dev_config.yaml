@@ -196,6 +196,13 @@ model_list:
     model_info:
       access_groups: ["free", "pro", "team"]
 
+  - model_name: dreamina-seedance-2-5-260628
+    litellm_params:
+      model: byteplus/dreamina-seedance-2-5-260628
+      api_key: os.environ/BYTEPLUS_API_KEY
+    model_info:
+      access_groups: ["free", "pro", "team"]
+
   - model_name: seedance-1-5-pro-251215
     litellm_params:
       model: byteplus/seedance-1-5-pro-251215
