@@ -167,6 +167,15 @@ class BytePlusVideoConfig(BaseVideoConfig):
           ],
           "ratio": "16:9", "duration": 5, "generate_audio": true, ...
         }
+
+        `input_reference` accepts:
+        - a URL string: single first-frame image (no `role`, output ratio
+          follows the image — BytePlus TaskTypeConstraint);
+        - a list of URL strings: multi-reference mode, each entry sent with
+          `role: "reference_image"` (Seedance 2.0/2.5 accept 1-9, prompts cite
+          them as [Image 1], [Image 2], ...);
+        - a list of {"url": ..., "role": ...} dicts for explicit roles
+          (e.g. "first_frame" / "last_frame").
         """
         params = dict(video_create_optional_request_params)
 
@@ -175,7 +184,25 @@ class BytePlusVideoConfig(BaseVideoConfig):
             content.append({"type": "text", "text": prompt})
 
         input_reference = params.pop("input_reference", None)
-        if input_reference:
+        if isinstance(input_reference, (list, tuple)):
+            for item in input_reference:
+                if isinstance(item, dict) and item.get("url"):
+                    content.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": item["url"]},
+                            "role": item.get("role") or "reference_image",
+                        }
+                    )
+                elif isinstance(item, str) and item:
+                    content.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": item},
+                            "role": "reference_image",
+                        }
+                    )
+        elif input_reference:
             content.append({"type": "image_url", "image_url": {"url": input_reference}})
 
         request_data: Dict[str, Any] = {"model": model, "content": content}

@@ -173,6 +173,64 @@ class TestBytePlusVideoGeneration:
             {"type": "image_url", "image_url": {"url": "https://example.com/a.jpg"}},
         ]
 
+    def test_create_request_with_multiple_reference_images(self):
+        from litellm.types.router import GenericLiteLLMParams
+
+        data, _, _ = self._cfg().transform_video_create_request(
+            model="dreamina-seedance-2-5-260628",
+            prompt="keep the same rider as [Image 1] and bike as [Image 2]",
+            api_base="https://ark.ap-southeast.bytepluses.com/api/v3",
+            video_create_optional_request_params={
+                "input_reference": [
+                    "https://example.com/a.jpg",
+                    "https://example.com/b.jpg",
+                ]
+            },
+            litellm_params=GenericLiteLLMParams(),
+            headers={},
+        )
+        assert data["content"][1:] == [
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/a.jpg"},
+                "role": "reference_image",
+            },
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/b.jpg"},
+                "role": "reference_image",
+            },
+        ]
+
+    def test_create_request_with_explicit_frame_roles(self):
+        from litellm.types.router import GenericLiteLLMParams
+
+        data, _, _ = self._cfg().transform_video_create_request(
+            model="dreamina-seedance-2-5-260628",
+            prompt="from dawn to dusk",
+            api_base="https://ark.ap-southeast.bytepluses.com/api/v3",
+            video_create_optional_request_params={
+                "input_reference": [
+                    {"url": "https://example.com/first.jpg", "role": "first_frame"},
+                    {"url": "https://example.com/last.jpg", "role": "last_frame"},
+                ]
+            },
+            litellm_params=GenericLiteLLMParams(),
+            headers={},
+        )
+        assert data["content"][1:] == [
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/first.jpg"},
+                "role": "first_frame",
+            },
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/last.jpg"},
+                "role": "last_frame",
+            },
+        ]
+
     def test_status_mapping_and_url_extraction(self):
         cfg = self._cfg()
         assert cfg._map_status("queued") == "queued"
