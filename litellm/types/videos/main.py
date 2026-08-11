@@ -25,6 +25,12 @@ class VideoObject(BaseModel):
     # dropped it on serialization, leaving `GET /v1/videos/{id}/content` — which
     # proxies the whole file — as the only way to reach the bytes.
     output_url: Optional[str] = None
+    # Signed URL of the clip's final frame — BytePlus returns it when the
+    # request sets `return_last_frame: true`. The primitive for chained clip
+    # extension (next clip's first_frame = this clip's last frame).
+    last_frame_url: Optional[str] = None
+    # Provider-echoed random seed, for reproducible re-runs.
+    seed: Optional[int] = None
     usage: Optional[Dict[str, Any]] = None
     _hidden_params: Dict[str, Any] = {}
 
