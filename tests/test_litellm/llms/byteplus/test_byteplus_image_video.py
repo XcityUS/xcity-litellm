@@ -231,6 +231,64 @@ class TestBytePlusVideoGeneration:
             },
         ]
 
+    def test_create_request_with_video_and_audio_references(self):
+        from litellm.types.router import GenericLiteLLMParams
+
+        data, _, _ = self._cfg().transform_video_create_request(
+            model="dreamina-seedance-2-5-260628",
+            prompt="use the framing of [Video 1] and [Audio 1] as BGM",
+            api_base="https://ark.ap-southeast.bytepluses.com/api/v3",
+            video_create_optional_request_params={
+                "input_reference": [
+                    "https://example.com/subject.jpg",
+                    {"url": "https://example.com/style.mp4", "role": "reference_video"},
+                    {"url": "https://example.com/bgm.mp3", "role": "reference_audio"},
+                ]
+            },
+            litellm_params=GenericLiteLLMParams(),
+            headers={},
+        )
+        assert data["content"][1:] == [
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/subject.jpg"},
+                "role": "reference_image",
+            },
+            {
+                "type": "video_url",
+                "video_url": {"url": "https://example.com/style.mp4"},
+                "role": "reference_video",
+            },
+            {
+                "type": "audio_url",
+                "audio_url": {"url": "https://example.com/bgm.mp3"},
+                "role": "reference_audio",
+            },
+        ]
+
+    def test_response_maps_last_frame_url_and_seed(self):
+        cfg = self._cfg()
+        succeeded = {
+            "id": "cgt-456",
+            "model": "dreamina-seedance-2-5-260628",
+            "status": "succeeded",
+            "content": {
+                "video_url": "https://example.com/v.mp4",
+                "last_frame_url": "https://example.com/last.png",
+            },
+            "seed": 42,
+            "created_at": 1780577242,
+            "duration": 8,
+        }
+        out = cfg.transform_video_status_retrieve_response(
+            raw_response=httpx.Response(200, json=succeeded),
+            logging_obj=None,
+            custom_llm_provider="byteplus",
+        )
+        assert out.output_url == "https://example.com/v.mp4"
+        assert out.last_frame_url == "https://example.com/last.png"
+        assert out.seed == 42
+
     def test_status_mapping_and_url_extraction(self):
         cfg = self._cfg()
         assert cfg._map_status("queued") == "queued"

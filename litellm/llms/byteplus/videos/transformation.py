@@ -187,13 +187,34 @@ class BytePlusVideoConfig(BaseVideoConfig):
         if isinstance(input_reference, (list, tuple)):
             for item in input_reference:
                 if isinstance(item, dict) and item.get("url"):
-                    content.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": item["url"]},
-                            "role": item.get("role") or "reference_image",
-                        }
-                    )
+                    # The role picks the content type: reference_video /
+                    # reference_audio become video_url / audio_url items
+                    # (multimodal reference mode); every other role is an image.
+                    role = item.get("role") or "reference_image"
+                    if role == "reference_video":
+                        content.append(
+                            {
+                                "type": "video_url",
+                                "video_url": {"url": item["url"]},
+                                "role": role,
+                            }
+                        )
+                    elif role == "reference_audio":
+                        content.append(
+                            {
+                                "type": "audio_url",
+                                "audio_url": {"url": item["url"]},
+                                "role": role,
+                            }
+                        )
+                    else:
+                        content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": item["url"]},
+                                "role": role,
+                            }
+                        )
                 elif isinstance(item, str) and item:
                     content.append(
                         {
@@ -240,6 +261,10 @@ class BytePlusVideoConfig(BaseVideoConfig):
         content = response_data.get("content") or {}
         if isinstance(content, dict) and content.get("video_url"):
             video_data["output_url"] = content["video_url"]
+        if isinstance(content, dict) and content.get("last_frame_url"):
+            video_data["last_frame_url"] = content["last_frame_url"]
+        if response_data.get("seed") is not None:
+            video_data["seed"] = response_data["seed"]
 
         if response_data.get("updated_at"):
             video_data["completed_at"] = int(response_data["updated_at"])
