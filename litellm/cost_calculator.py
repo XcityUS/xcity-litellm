@@ -142,6 +142,12 @@ _VIDEO_CALL_TYPES = frozenset(
         CallTypes.avideo_edit.value,
         CallTypes.video_remix.value,
         CallTypes.avideo_remix.value,
+        # Retrieve is priced too: async providers (BytePlus) only know the real
+        # result — and its token count — when the task finishes, so the charge
+        # belongs to the poll that first observes success. Polls that carry no
+        # usage price at 0 and are skipped by the spend writer.
+        CallTypes.video_retrieve.value,
+        CallTypes.avideo_retrieve.value,
     }
 )
 
@@ -1354,18 +1360,27 @@ def completion_cost(
                     usage_obj = getattr(completion_response, "usage", None)
                     duration_seconds: Optional[float] = None
                     video_resolution: Optional[str] = None
+                    video_tokens: Optional[int] = None
+                    has_video_input: bool = False
                     if completion_response is not None and usage_obj:
                         # Handle both dict and Pydantic Usage object
                         if isinstance(usage_obj, dict):
                             duration_seconds = usage_obj.get("duration_seconds", None)
                             _vr = usage_obj.get("video_resolution", None)
+                            _vt = usage_obj.get("completion_tokens", None)
+                            _vhv = usage_obj.get("has_video_input", None)
                         else:
                             duration_seconds = getattr(usage_obj, "duration_seconds", None)
                             _vr = getattr(usage_obj, "video_resolution", None)
+                            _vt = getattr(usage_obj, "completion_tokens", None)
+                            _vhv = getattr(usage_obj, "has_video_input", None)
                         if _vr is not None:
                             video_resolution = str(_vr).strip().lower()
+                        if isinstance(_vt, (int, float)) and _vt > 0:
+                            video_tokens = int(_vt)
+                        has_video_input = bool(_vhv)
 
-                        if duration_seconds is not None:
+                        if duration_seconds is not None or video_tokens is not None:
                             # Calculate cost based on video duration using video-specific cost calculation
                             from litellm.llms.openai.cost_calculation import (
                                 video_generation_cost,
@@ -1373,10 +1388,12 @@ def completion_cost(
 
                             return video_generation_cost(
                                 model=model,
-                                duration_seconds=duration_seconds,
+                                duration_seconds=duration_seconds or 0.0,
                                 custom_llm_provider=custom_llm_provider,
                                 model_info=_video_model_info,
                                 video_resolution=video_resolution,
+                                completion_tokens=video_tokens,
+                                has_video_input=has_video_input,
                             )
                     # Fallback to default video cost calculation if no duration available
                     return default_video_cost_calculator(

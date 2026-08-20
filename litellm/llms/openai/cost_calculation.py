@@ -168,12 +168,44 @@ def _video_output_cost_per_second(
     return None
 
 
+def _video_token_rate(
+    model_info: Mapping[str, Any],
+    video_resolution: Optional[str],
+    has_video_input: bool,
+) -> Optional[float]:
+    """
+    Per-token video rate from model_info, in USD per token.
+
+    Providers that bill video by token (BytePlus) price by resolution bucket
+    and by whether the request carried a video input, so the lookup order is
+    ``output_cost_per_video_token_<resolution>[_with_video]`` then the flat
+    ``output_cost_per_video_token``.
+    """
+    r = (video_resolution or "").strip().lower()
+    suffixes = []
+    if r:
+        bucket = _video_resolution_to_cost_field_suffix(r) or r
+        if has_video_input:
+            suffixes.append(f"output_cost_per_video_token_{bucket}_with_video")
+        suffixes.append(f"output_cost_per_video_token_{bucket}")
+    if has_video_input:
+        suffixes.append("output_cost_per_video_token_with_video")
+    suffixes.append("output_cost_per_video_token")
+    for key in suffixes:
+        rate = model_info.get(key)
+        if rate is not None:
+            return float(rate)
+    return None
+
+
 def video_generation_cost(
     model: str,
     duration_seconds: float,
     custom_llm_provider: Optional[str] = None,
     model_info: Optional[ModelInfo] = None,
     video_resolution: Optional[str] = None,
+    completion_tokens: Optional[int] = None,
+    has_video_input: bool = False,
 ) -> float:
     """
     Calculates the cost for video generation based on duration in seconds.
@@ -193,6 +225,17 @@ def video_generation_cost(
     ## GET MODEL INFO
     if model_info is None:
         model_info = get_model_info(model=model, custom_llm_provider=custom_llm_provider or "openai")
+
+    # Token-based pricing wins when the provider reported a token count: it
+    # already accounts for resolution, aspect ratio, duration and video input,
+    # none of which a per-second rate can express.
+    if completion_tokens:
+        token_rate = _video_token_rate(model_info, video_resolution, has_video_input)
+        if token_rate is not None:
+            verbose_logger.debug(
+                f"For model={model} - video token rate: {token_rate}; tokens: {completion_tokens}"
+            )
+            return token_rate * completion_tokens
 
     # Check for video-specific cost per second
     video_cost_per_second = model_info.get("output_cost_per_video_per_second")
