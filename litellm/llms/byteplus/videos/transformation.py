@@ -1,4 +1,5 @@
 import math
+import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -33,6 +34,38 @@ else:
 
 DEFAULT_BASE_URL = "https://ark.ap-southeast.bytepluses.com/api/v3"
 VIDEO_TASKS_ENDPOINT = "contents/generations/tasks"
+
+
+# Video ids whose successful completion has already been billed, with the
+# timestamp of that charge. Ark keeps a task for 7 days, so entries older than
+# that can never be polled again.
+_CHARGED_VIDEO_IDS: Dict[str, float] = {}
+_CHARGE_TTL_SECONDS = 7 * 24 * 60 * 60
+_CHARGE_CACHE_MAX = 10_000
+
+
+def _claim_video_charge(video_id: Optional[str]) -> bool:
+    """
+    True the first time a given video id is seen as successfully completed.
+
+    In-process by design: the gateway runs as a single replica, and the
+    alternative (a Redis round trip from the transform layer) would drag proxy
+    internals into the provider config. If this service is ever scaled out,
+    move this claim into the shared DualCache — otherwise each replica could
+    bill the same video once.
+    """
+    if not video_id:
+        return True
+    now = time.time()
+    if len(_CHARGED_VIDEO_IDS) > _CHARGE_CACHE_MAX:
+        for stale, seen_at in list(_CHARGED_VIDEO_IDS.items()):
+            if now - seen_at > _CHARGE_TTL_SECONDS:
+                _CHARGED_VIDEO_IDS.pop(stale, None)
+    seen_at = _CHARGED_VIDEO_IDS.get(video_id)
+    if seen_at is not None and now - seen_at <= _CHARGE_TTL_SECONDS:
+        return False
+    _CHARGED_VIDEO_IDS[video_id] = now
+    return True
 
 
 class BytePlusVideoConfig(BaseVideoConfig):
@@ -292,16 +325,76 @@ class BytePlusVideoConfig(BaseVideoConfig):
                 video_obj.id, custom_llm_provider, model
             )
 
-        # Usage for cost tracking (duration-based)
+        # Usage drives cost tracking, so it is attached ONLY for a task that
+        # actually succeeded, and only the first time we observe that success.
+        #
+        # BytePlus bills solely for successful generations and LiteLLM has no
+        # refund path, so a create call (which has no result yet) and every
+        # queued/running/failed poll must stay cost-free. Our own studio
+        # re-reads a finished job several times (archive reconciliation,
+        # output_url retries, history clicks); without the dedupe below each of
+        # those re-reads would charge the user again — the spend LOG is keyed by
+        # request_id and would collapse, but the incremental key/user spend
+        # counters would not.
         usage_data: Dict[str, Any] = {}
-        if getattr(video_obj, "seconds", None):
-            try:
-                usage_data["duration_seconds"] = float(video_obj.seconds)
-            except (ValueError, TypeError):
-                pass
+        if video_data["status"] == "completed" and _claim_video_charge(
+            response_data.get("id") or video_obj.id
+        ):
+            if getattr(video_obj, "seconds", None):
+                try:
+                    usage_data["duration_seconds"] = float(video_obj.seconds)
+                except (ValueError, TypeError):
+                    pass
+            # The provider's own count is authoritative — it already reflects
+            # resolution, aspect ratio, clip length and any video input, which
+            # a per-second rate cannot express.
+            provider_usage = response_data.get("usage")
+            if isinstance(provider_usage, dict):
+                for key in ("completion_tokens", "total_tokens", "prompt_tokens"):
+                    value = provider_usage.get(key)
+                    if isinstance(value, (int, float)):
+                        usage_data[key] = int(value)
+            resolution = self._resolution_bucket(response_data, request_data)
+            if resolution:
+                # BytePlus never sets this; without it LiteLLM cannot pick the
+                # per-resolution rate and silently falls back to a flat one.
+                usage_data["video_resolution"] = resolution
+            if self._has_video_input(request_data):
+                usage_data["has_video_input"] = True
         video_obj.usage = usage_data
 
         return video_obj
+
+    @staticmethod
+    def _resolution_bucket(
+        response_data: Dict[str, Any], request_data: Optional[Dict]
+    ) -> Optional[str]:
+        """Normalize the output resolution to 480p/720p/1080p/4k."""
+        raw = response_data.get("resolution")
+        if not raw and request_data:
+            raw = request_data.get("resolution")
+        text = str(raw or "").strip().lower()
+        if not text:
+            return None
+        if text in ("4k", "2160p"):
+            return "4k"
+        for bucket in ("480p", "720p", "1080p"):
+            if text == bucket or text == bucket[:-1]:
+                return bucket
+        return text or None
+
+    @staticmethod
+    def _has_video_input(request_data: Optional[Dict]) -> bool:
+        """True when the request carried a reference video (cheaper per token)."""
+        if not request_data:
+            return False
+        content = request_data.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(item, dict) and item.get("type") == "video_url"
+            for item in content
+        )
 
     def transform_video_create_response(
         self,
