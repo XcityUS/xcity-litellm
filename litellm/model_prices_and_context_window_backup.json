@@ -44474,56 +44474,52 @@
         "supports_vision": true
     },
     "byteplus/dreamina-seedance-2-0-260128": {
-        "litellm_provider": "byteplus",
         "mode": "video_generation",
+        "litellm_provider": "byteplus",
+        "output_cost_per_video_token_480p": 7e-06,
+        "output_cost_per_video_token_480p_with_video": 4.2999999999999995e-06,
+        "output_cost_per_second_480p": 0.067249,
+        "output_cost_per_video_token_720p": 7e-06,
+        "output_cost_per_video_token_720p_with_video": 4.2999999999999995e-06,
+        "output_cost_per_second_720p": 0.1512,
+        "output_cost_per_video_token_1080p": 7.7e-06,
+        "output_cost_per_video_token_1080p_with_video": 4.7e-06,
+        "output_cost_per_second_1080p": 0.37422,
+        "output_cost_per_video_token_4k": 4e-06,
+        "output_cost_per_video_token_4k_with_video": 2.4e-06,
+        "output_cost_per_second_4k": 0.7776,
+        "output_cost_per_video_token": 7e-06,
         "output_cost_per_second": 0.1512,
-        "output_cost_per_second_1080p": 0.3742,
-        "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
-        "supported_endpoints": [
-            "/v1/videos"
-        ],
-        "supported_modalities": [
-            "text",
-            "image"
-        ],
-        "supported_output_modalities": [
-            "video"
-        ]
+        "notes": "BytePlus list, USD/M tokens. Charged at cost."
     },
     "byteplus/dreamina-seedance-2-0-fast-260128": {
-        "litellm_provider": "byteplus",
         "mode": "video_generation",
-        "output_cost_per_second": 0.121,
-        "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
-        "supported_endpoints": [
-            "/v1/videos"
-        ],
-        "supported_modalities": [
-            "text",
-            "image"
-        ],
-        "supported_output_modalities": [
-            "video"
-        ]
+        "litellm_provider": "byteplus",
+        "output_cost_per_video_token_480p": 5.6e-06,
+        "output_cost_per_video_token_480p_with_video": 3.2999999999999997e-06,
+        "output_cost_per_second_480p": 0.053799,
+        "output_cost_per_video_token_720p": 5.6e-06,
+        "output_cost_per_video_token_720p_with_video": 3.2999999999999997e-06,
+        "output_cost_per_second_720p": 0.12096,
+        "output_cost_per_video_token": 5.6e-06,
+        "output_cost_per_second": 0.12096,
+        "notes": "BytePlus list, USD/M tokens (25% promo ignored on purpose - ends 2026-09-07). No 1080p/4K tier."
     },
     "byteplus/dreamina-seedance-2-5-260628": {
-        "litellm_provider": "byteplus",
         "mode": "video_generation",
-        "output_cost_per_second": 0.1512,
-        "output_cost_per_second_1080p": 0.3742,
-        "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
-        "supported_endpoints": [
-            "/v1/videos"
-        ],
-        "supported_modalities": [
-            "text",
-            "image",
-            "video",
-            "audio"
-        ],
-        "supported_output_modalities": [
-            "video"
-        ]
+        "litellm_provider": "byteplus",
+        "output_cost_per_video_token_480p": 1.2839999999999997e-05,
+        "output_cost_per_video_token_480p_with_video": 7.68e-06,
+        "output_cost_per_second_480p": 0.123354,
+        "output_cost_per_video_token_720p": 1.2839999999999997e-05,
+        "output_cost_per_video_token_720p_with_video": 7.68e-06,
+        "output_cost_per_second_720p": 0.277344,
+        "output_cost_per_video_token_1080p": 1.404e-05,
+        "output_cost_per_video_token_1080p_with_video": 8.400000000000001e-06,
+        "output_cost_per_second_1080p": 0.682344,
+        "output_cost_per_video_token": 1.2839999999999997e-05,
+        "output_cost_per_second": 0.277344,
+        "notes": "BytePlus list +20% Xcity markup. No 4K tier; the 1080p 28% promo (ends 2026-09-17) is deliberately not applied."
     },
     "byteplus/seedance-1-0-pro-250528": {
         "litellm_provider": "byteplus",
@@ -44560,21 +44556,17 @@
         ]
     },
     "byteplus/seedance-1-5-pro-251215": {
-        "litellm_provider": "byteplus",
         "mode": "video_generation",
-        "output_cost_per_second": 0.052,
-        "output_cost_per_second_1080p": 0.117,
-        "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
-        "supported_endpoints": [
-            "/v1/videos"
-        ],
-        "supported_modalities": [
-            "text",
-            "image"
-        ],
-        "supported_output_modalities": [
-            "video"
-        ]
+        "litellm_provider": "byteplus",
+        "output_cost_per_video_token_480p": 2.4e-06,
+        "output_cost_per_second_480p": 0.023057,
+        "output_cost_per_video_token_720p": 2.4e-06,
+        "output_cost_per_second_720p": 0.05184,
+        "output_cost_per_video_token_1080p": 2.4e-06,
+        "output_cost_per_second_1080p": 0.11664,
+        "output_cost_per_video_token": 2.4e-06,
+        "output_cost_per_second": 0.05184,
+        "notes": "BytePlus list, USD/M tokens: 2.4 with audio, 1.2 silent; we bill the audio rate. No 4K tier."
     },
     "byteplus/seedream-4-5-251128": {
         "litellm_provider": "byteplus",
@@ -44588,7 +44580,7 @@
     "byteplus/seedream-5-0-260128": {
         "litellm_provider": "byteplus",
         "mode": "image_generation",
-        "output_cost_per_image": 0.0,
+        "output_cost_per_image": 0.035,
         "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
         "supported_endpoints": [
             "/v1/images/generations"
