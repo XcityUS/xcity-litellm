@@ -44665,7 +44665,7 @@
     "byteplus/seedream-5-0-260128": {
         "litellm_provider": "byteplus",
         "mode": "image_generation",
-        "output_cost_per_image": 0.0,
+        "output_cost_per_image": 0.035,
         "source": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
         "supported_endpoints": [
             "/v1/images/generations"

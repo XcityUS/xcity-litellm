@@ -148,6 +148,13 @@ _VIDEO_CALL_TYPES = frozenset(
         # usage price at 0 and are skipped by the spend writer.
         CallTypes.video_retrieve.value,
         CallTypes.avideo_retrieve.value,
+        # The proxy's own GET /videos/{video_id} route reports these two, and
+        # they are plain strings — router.py's factory sets them directly and
+        # CallTypes has no member for either. Listing only the retrieve members
+        # above meant every poll through the proxy skipped video pricing
+        # entirely, so async video billed nothing at all.
+        "video_status",
+        "avideo_status",
     }
 )
 

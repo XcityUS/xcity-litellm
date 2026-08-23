@@ -12,9 +12,18 @@ import sys
 import httpx
 import pytest
 
+# Production runs with LITELLM_LOCAL_MODEL_COST_MAP=True, which reads the
+# packaged copy of the price map rather than fetching upstream's. Pin it here
+# too, or these tests price against a map that has never heard of BytePlus
+# video — which is how a whole release shipped without any token prices.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
 workspace_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 sys.path.insert(0, workspace_path)
 
+from types import SimpleNamespace
+
+from litellm.cost_calculator import completion_cost
 from litellm.llms.byteplus.videos import transformation as byteplus_videos
 from litellm.llms.openai.cost_calculation import video_generation_cost
 from litellm.types.utils import LlmProviders
@@ -164,3 +173,34 @@ class TestTokenPricing:
             video_resolution="720p", completion_tokens=square_tokens,
         )
         assert square < wide
+
+
+class TestProxyPollCallTypesArePriced:
+    """The route the studio actually polls must reach video pricing.
+
+    `GET /videos/{video_id}` reports `avideo_status` (router.py sets the string
+    directly; CallTypes has no member for it). Pricing keyed only on the
+    retrieve call types let every real poll fall past the video branch and bill
+    nothing — while the unit tests above stayed green, because they call the
+    pricing helper directly and never exercise the dispatch.
+    """
+
+    @pytest.mark.parametrize(
+        "call_type",
+        ["avideo_status", "video_status", "avideo_retrieve", "video_retrieve"],
+    )
+    def test_poll_call_type_reaches_video_pricing(self, call_type):
+        response = SimpleNamespace(
+            usage={
+                "completion_tokens": 108000,
+                "video_resolution": "720p",
+                "duration_seconds": 5.0,
+            }
+        )
+        cost = completion_cost(
+            completion_response=response,
+            model=MODEL,
+            custom_llm_provider="byteplus",
+            call_type=call_type,
+        )
+        assert cost > 0
