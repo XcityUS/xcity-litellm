@@ -100,7 +100,8 @@ USER root
 RUN apk add --no-cache bash openssl tzdata nodejs python3 libsndfile
 
 WORKDIR /app
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}" \
+    LITELLM_LOCAL_MODEL_COST_MAP="True"
 
 # Copy only what runtime needs. The application is installed inside the venv;
 # the rest of the builder's /app is source and build metadata that must not

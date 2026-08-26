@@ -133,6 +133,65 @@ class TestBytePlusRequestBuilding:
         assert "max_completion_tokens" not in mapped
 
 
+class TestBytePlusFunctionCalling:
+    """`tools` must survive the request for BytePlus chat models."""
+
+    TOOLS = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"city": {"type": "string"}},
+                    "required": ["city"],
+                },
+            },
+        }
+    ]
+
+    def test_tools_kept_for_model_missing_from_cost_map(self):
+        """A BytePlus model that has not been added to the cost map still accepts tools.
+
+        Before this was fixed, an unmapped model was treated as "does not support
+        function calling", so every request carrying tools failed with
+        `UnsupportedParamsError: byteplus does not support parameters: ['tools']`.
+        """
+        model = "deepseek-v4-pro-not-in-cost-map"
+        assert f"byteplus/{model}" not in litellm.model_cost
+
+        optional_params = litellm.utils.get_optional_params(
+            model=model,
+            custom_llm_provider="byteplus",
+            tools=self.TOOLS,
+        )
+
+        assert optional_params["tools"] == self.TOOLS
+
+    def test_tools_dropped_when_cost_map_marks_function_calling_unsupported(self, register_chat_model):
+        model = "byteplus-model-without-fc"
+        register_chat_model(f"byteplus/{model}", supports_function_calling=False)
+
+        with pytest.raises(litellm.UnsupportedParamsError, match="tools"):
+            litellm.utils.get_optional_params(
+                model=model,
+                custom_llm_provider="byteplus",
+                tools=self.TOOLS,
+            )
+
+    def test_deepseek_v4_pro_ga_registered_with_function_calling(self, monkeypatch):
+        monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+        model_cost = litellm.get_model_cost_map(url="")
+
+        entry = model_cost["byteplus/deepseek-v4-pro-ga-260813"]
+        assert entry["litellm_provider"] == "byteplus"
+        assert entry["mode"] == "chat"
+        assert entry["supports_function_calling"] is True
+        assert entry["supports_tool_choice"] is True
+        assert entry["input_cost_per_token"] > 0
+        assert entry["output_cost_per_token"] > 0
+
+
 class TestBytePlusCompletion:
     """Optional live smoke test."""
 

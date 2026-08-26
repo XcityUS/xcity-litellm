@@ -30,7 +30,7 @@ actually needs:
 Operation IDs are preserved verbatim so codegen output is stable.
 """
 
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, Set, Tuple
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -134,10 +134,7 @@ def _filter_openapi(schema: Dict[str, Any]) -> Dict[str, Any]:
                 kept_ops[m] = ops[m]
                 _collect_refs(ops[m], referenced_schemas)
         # Skip the path entirely if every method got filtered out.
-        if any(
-            k in kept_ops
-            for k in ("get", "post", "put", "patch", "delete", "head", "options")
-        ):
+        if any(k in kept_ops for k in ("get", "post", "put", "patch", "delete", "head", "options")):
             out["paths"][path] = kept_ops
 
     # Optionally prune unreferenced schemas in components.schemas to keep
@@ -159,9 +156,7 @@ def _filter_openapi(schema: Dict[str, Any]) -> Dict[str, Any]:
             if not new:
                 break
             kept |= new
-        out["components"]["schemas"] = {
-            name: schema_obj for name, schema_obj in all_schemas.items() if name in kept
-        }
+        out["components"]["schemas"] = {name: schema_obj for name, schema_obj in all_schemas.items() if name in kept}
     return out
 
 
@@ -169,11 +164,7 @@ def _collect_refs(node: Any, acc: Set[str]) -> None:
     """Recurse the node, recording `#/components/schemas/<Name>` refs."""
     if isinstance(node, dict):
         for k, v in node.items():
-            if (
-                k == "$ref"
-                and isinstance(v, str)
-                and v.startswith("#/components/schemas/")
-            ):
+            if k == "$ref" and isinstance(v, str) and v.startswith("#/components/schemas/"):
                 acc.add(v.rsplit("/", 1)[-1])
             else:
                 _collect_refs(v, acc)

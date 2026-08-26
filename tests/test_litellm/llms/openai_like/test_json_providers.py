@@ -5,7 +5,6 @@ Tests for JSON-based provider configuration system.
 import json
 import os
 import sys
-from unittest.mock import MagicMock, patch
 
 try:
     import pytest
@@ -98,9 +97,10 @@ class TestJSONProviderLoader:
         assert isinstance(supported, list)
         assert len(supported) > 0
 
-    def test_tool_params_excluded_when_function_calling_not_supported(self):
-        """Test that tool-related params are excluded for models that don't support
-        function calling. Regression test for https://github.com/BerriAI/litellm/issues/21125
+    def test_tool_params_excluded_when_function_calling_not_supported(self, register_chat_model):
+        """Test that tool-related params are excluded for models the cost map marks as
+        not supporting function calling.
+        Regression test for https://github.com/BerriAI/litellm/issues/21125
         """
         from litellm.llms.openai_like.dynamic_config import create_config_class
         from litellm.llms.openai_like.json_loader import JSONProviderRegistry
@@ -109,9 +109,8 @@ class TestJSONProviderLoader:
         config_class = create_config_class(provider)
         config = config_class()
 
-        # Mock supports_function_calling to return False
-        with patch("litellm.utils.supports_function_calling", return_value=False):
-            supported = config.get_supported_openai_params("some-model-without-fc")
+        register_chat_model("publicai/some-model-without-fc", supports_function_calling=False)
+        supported = config.get_supported_openai_params("some-model-without-fc")
 
         tool_params = [
             "tools",
@@ -130,7 +129,7 @@ class TestJSONProviderLoader:
         assert "max_tokens" in supported
         assert "stop" in supported
 
-    def test_tool_params_included_when_function_calling_supported(self):
+    def test_tool_params_included_when_function_calling_supported(self, register_chat_model):
         """Test that tool-related params are included for models that support function calling."""
         from litellm.llms.openai_like.dynamic_config import create_config_class
         from litellm.llms.openai_like.json_loader import JSONProviderRegistry
@@ -139,9 +138,27 @@ class TestJSONProviderLoader:
         config_class = create_config_class(provider)
         config = config_class()
 
-        # Mock supports_function_calling to return True
-        with patch("litellm.utils.supports_function_calling", return_value=True):
-            supported = config.get_supported_openai_params("some-model-with-fc")
+        register_chat_model("publicai/some-model-with-fc", supports_function_calling=True)
+        supported = config.get_supported_openai_params("some-model-with-fc")
+
+        assert "tools" in supported
+        assert "tool_choice" in supported
+
+    def test_tool_params_kept_for_model_missing_from_cost_map(self):
+        """A model with no cost map entry is unknown, not known to lack function calling.
+
+        Stripping tool params there surfaces as
+        `UnsupportedParamsError: <provider> does not support parameters: ['tools']`
+        for every model that has not been added to the cost map yet.
+        """
+        from litellm.llms.openai_like.dynamic_config import create_config_class
+        from litellm.llms.openai_like.json_loader import JSONProviderRegistry
+
+        provider = JSONProviderRegistry.get("publicai")
+        config = create_config_class(provider)()
+
+        assert "publicai/model-missing-from-cost-map" not in litellm.model_cost
+        supported = config.get_supported_openai_params("model-missing-from-cost-map")
 
         assert "tools" in supported
         assert "tool_choice" in supported
