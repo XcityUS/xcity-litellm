@@ -15,6 +15,16 @@ from litellm.types.llms.openai import AllMessageValues
 
 from .json_loader import SimpleProviderConfig
 
+FUNCTION_CALLING_OPENAI_PARAMS: frozenset[str] = frozenset(
+    {
+        "tools",
+        "tool_choice",
+        "function_call",
+        "functions",
+        "parallel_tool_calls",
+    }
+)
+
 
 def create_config_class(provider: SimpleProviderConfig):
     """Generate config class dynamically from JSON configuration"""
@@ -89,31 +99,29 @@ def create_config_class(provider: SimpleProviderConfig):
             return api_base
 
         def get_supported_openai_params(self, model: str) -> list:
-            """Get supported OpenAI params, excluding tool-related params for models
-            that don't support function calling."""
-            from litellm.utils import supports_function_calling
+            """Get supported OpenAI params, dropping tool-related params only for models
+            the cost map explicitly marks as not supporting function calling.
+
+            A model missing from the cost map is unknown, not known-to-lack-tools, so it
+            is left alone; stripping ``tools`` there turns every model that has not been
+            added to the cost map yet into a confusing UnsupportedParamsError.
+            """
+            from litellm.utils import _is_explicitly_disabled_factory
 
             supported_params = super().get_supported_openai_params(model=model)
 
-            _supports_fc = supports_function_calling(model=model, custom_llm_provider=provider.slug)
+            if not _is_explicitly_disabled_factory(
+                model=model,
+                custom_llm_provider=provider.slug,
+                key="supports_function_calling",
+            ):
+                return supported_params
 
-            if not _supports_fc:
-                tool_params = [
-                    "tools",
-                    "tool_choice",
-                    "function_call",
-                    "functions",
-                    "parallel_tool_calls",
-                ]
-                for param in tool_params:
-                    if param in supported_params:
-                        supported_params.remove(param)
-                verbose_logger.debug(
-                    f"Model {model} on provider {provider.slug} does not support "
-                    f"function calling — removed tool-related params from supported params."
-                )
-
-            return supported_params
+            verbose_logger.debug(
+                f"Model {model} on provider {provider.slug} does not support "
+                f"function calling — removed tool-related params from supported params."
+            )
+            return [param for param in supported_params if param not in FUNCTION_CALLING_OPENAI_PARAMS]
 
         def map_openai_params(
             self,
