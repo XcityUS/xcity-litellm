@@ -30,7 +30,7 @@ actually needs:
 Operation IDs are preserved verbatim so codegen output is stable.
 """
 
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, Set, Tuple
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
