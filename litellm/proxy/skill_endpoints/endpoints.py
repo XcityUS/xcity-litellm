@@ -75,6 +75,21 @@ def _is_admin(uak: UserAPIKeyAuth) -> bool:
     )
 
 
+def _manifest_into_metadata(metadata: dict, tools, pricing) -> dict:
+    """Fold the typed manifest fields into the metadata JSON.
+
+    ``tools`` / ``pricing`` are stored under ``xct_metadata`` (no dedicated DB
+    columns), and an explicit top-level field wins over a same-named key the
+    caller put in raw metadata.
+    """
+    merged = dict(metadata)
+    if tools is not None:
+        merged["tools"] = [t.model_dump(exclude_none=True) for t in tools]
+    if pricing is not None:
+        merged["pricing"] = pricing.model_dump(exclude_none=True)
+    return merged
+
+
 def _row_to_skill(row) -> XCTSkill:
     """Map a Prisma row (or dict) to the public XCTSkill response."""
     if hasattr(row, "model_dump"):
@@ -83,7 +98,12 @@ def _row_to_skill(row) -> XCTSkill:
         data = row
     else:
         data = vars(row)
+    metadata = data.get("xct_metadata") or {}
+    tools = metadata.get("tools")
+    pricing = metadata.get("pricing")
     return XCTSkill(
+        tools=tools if isinstance(tools, list) else None,
+        pricing=pricing if isinstance(pricing, dict) else None,
         skill_id=data["skill_id"],
         display_title=data.get("display_title"),
         description=data.get("description"),
@@ -98,7 +118,7 @@ def _row_to_skill(row) -> XCTSkill:
         created_by=data.get("created_by"),
         created_at=data.get("created_at"),
         updated_at=data.get("updated_at"),
-        xct_metadata=data.get("xct_metadata") or {},
+        xct_metadata=metadata,
     )
 
 
@@ -148,7 +168,9 @@ async def create_skill(
         "is_public": payload.is_public,
         "team_id": payload.team_id or user_api_key_dict.team_id,
         "user_id": user_api_key_dict.user_id,
-        "xct_metadata": payload.xct_metadata or {},
+        "xct_metadata": _manifest_into_metadata(
+            payload.xct_metadata or {}, payload.tools, payload.pricing
+        ),
         "created_by": user_api_key_dict.user_id,
     }
     row = await prisma_client.db.litellm_skillstable.create(
@@ -265,7 +287,20 @@ async def patch_skill(
     from litellm.proxy.proxy_server import prisma_client
 
     row = await _require_writable(skill_id, user_api_key_dict)
-    update_data = {k: v for k, v in patch.model_dump().items() if v is not None}
+    update_data = {
+        k: v
+        for k, v in patch.model_dump(exclude={"tools", "pricing"}).items()
+        if v is not None
+    }
+    if patch.tools is not None or patch.pricing is not None:
+        # The manifest lives inside xct_metadata: overlay onto the explicitly
+        # patched metadata when one was sent, else onto the row's current one.
+        base_metadata = update_data.get("xct_metadata")
+        if base_metadata is None:
+            base_metadata = getattr(row, "xct_metadata", None) or {}
+        update_data["xct_metadata"] = _manifest_into_metadata(
+            base_metadata, patch.tools, patch.pricing
+        )
     if not update_data:
         # Re-fetch + return; no-op patches shouldn't error.
         return await get_skill(skill_id, user_api_key_dict)

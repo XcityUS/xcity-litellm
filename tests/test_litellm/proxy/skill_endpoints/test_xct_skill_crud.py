@@ -246,3 +246,102 @@ def test_prisma_json_compat_wraps_json_columns_and_drops_none():
     assert isinstance(data["xct_metadata"], prisma.Json)
     assert isinstance(data["metadata"], prisma.Json)
     assert data["display_title"] == "t"  # non-Json fields untouched
+
+
+def test_create_skill_folds_manifest_into_metadata():
+    """tools/pricing are typed API fields stored under xct_metadata."""
+    prisma = _mock_prisma()
+    prisma.db.litellm_skillstable.create.return_value = _mock_row(
+        skill_id="sk-m",
+        xct_metadata={
+            "xct_agent_slug": "lawyer",
+            "tools": [{"server_id": "srv-1", "tool": "review_contract"}],
+            "pricing": {"kwh_per_use": 2.5},
+        },
+    )
+    with patch("litellm.proxy.proxy_server.prisma_client", prisma):
+        resp = _make_client(role=LitellmUserRoles.INTERNAL_USER).post(
+            "/v1/xct-skills",
+            json={
+                "display_title": "Lawyer",
+                "xct_metadata": {"xct_agent_slug": "lawyer"},
+                "tools": [{"server_id": "srv-1", "tool": "review_contract"}],
+                "pricing": {"kwh_per_use": 2.5},
+            },
+            headers={"Authorization": "Bearer k"},
+        )
+    assert resp.status_code == 200
+    stored = prisma.db.litellm_skillstable.create.call_args.kwargs["data"]
+    # Unwrap the prisma.Json wrapper (its payload rides on .data).
+    metadata = getattr(stored["xct_metadata"], "data", stored["xct_metadata"])
+    assert metadata["xct_agent_slug"] == "lawyer"
+    assert metadata["tools"] == [{"server_id": "srv-1", "tool": "review_contract"}]
+    assert metadata["pricing"] == {"kwh_per_use": 2.5}
+    # And the response surfaces them as first-class fields.
+    body = resp.json()
+    assert body["tools"] == [{"server_id": "srv-1", "tool": "review_contract"}]
+    assert body["pricing"] == {"kwh_per_use": 2.5}
+
+
+def test_create_skill_rejects_bad_manifest():
+    prisma = _mock_prisma()
+    with patch("litellm.proxy.proxy_server.prisma_client", prisma):
+        client = _make_client(role=LitellmUserRoles.INTERNAL_USER)
+        # tools entry without server_id
+        resp = client.post(
+            "/v1/xct-skills",
+            json={"display_title": "X", "tools": [{"tool": "t"}]},
+            headers={"Authorization": "Bearer k"},
+        )
+        assert resp.status_code == 422
+        # negative pricing
+        resp = client.post(
+            "/v1/xct-skills",
+            json={"display_title": "X", "pricing": {"kwh_per_use": -1}},
+            headers={"Authorization": "Bearer k"},
+        )
+        assert resp.status_code == 422
+    prisma.db.litellm_skillstable.create.assert_not_awaited()
+
+
+def test_patch_skill_merges_manifest_into_existing_metadata():
+    """PATCH with only pricing keeps the row's other metadata keys."""
+    prisma = _mock_prisma()
+    prisma.db.litellm_skillstable.find_unique.return_value = _mock_row(
+        skill_id="sk-001",
+        xct_metadata={"xct_agent_slug": "lawyer", "tools": [{"server_id": "srv-1"}]},
+    )
+    prisma.db.litellm_skillstable.update.return_value = _mock_row(skill_id="sk-001")
+    with patch("litellm.proxy.proxy_server.prisma_client", prisma):
+        resp = _make_client(role=LitellmUserRoles.PROXY_ADMIN).patch(
+            "/v1/xct-skills/sk-001",
+            json={"pricing": {"kwh_per_use": 4}},
+            headers={"Authorization": "Bearer k"},
+        )
+    assert resp.status_code == 200
+    updated = prisma.db.litellm_skillstable.update.call_args.kwargs["data"]
+    metadata = getattr(updated["xct_metadata"], "data", updated["xct_metadata"])
+    assert metadata["xct_agent_slug"] == "lawyer"
+    assert metadata["tools"] == [{"server_id": "srv-1"}]
+    assert metadata["pricing"] == {"kwh_per_use": 4}
+
+
+def test_list_row_surfaces_manifest_fields():
+    prisma = _mock_prisma()
+    prisma.db.litellm_skillstable.find_many.return_value = [
+        _mock_row(
+            skill_id="sk-1",
+            xct_metadata={"tools": [{"server_id": "s"}], "pricing": {"kwh_per_use": 1}},
+        ),
+        _mock_row(skill_id="sk-2"),
+    ]
+    with patch("litellm.proxy.proxy_server.prisma_client", prisma):
+        resp = _make_client(role=LitellmUserRoles.PROXY_ADMIN).get(
+            "/v1/xct-skills", headers={"Authorization": "Bearer k"}
+        )
+    assert resp.status_code == 200
+    rows = resp.json()["data"]
+    assert rows[0]["tools"] == [{"server_id": "s"}]
+    assert rows[0]["pricing"] == {"kwh_per_use": 1}
+    assert rows[1]["tools"] is None
+    assert rows[1]["pricing"] is None
