@@ -7,7 +7,34 @@ These live alongside the Anthropic skill types in
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class XCTSkillToolRef(BaseModel):
+    """One MCP-portal tool a skill wants available at run time.
+
+    ``server_id`` names the upstream MCP server (as the portal knows it);
+    ``tool`` optionally narrows to one tool on that server. Extra keys are
+    stored verbatim so the manifest can grow without a type change here.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    server_id: str = Field(min_length=1)
+    tool: Optional[str] = None
+    note: Optional[str] = None
+
+
+class XCTSkillPricing(BaseModel):
+    """Marketplace pricing for one skill, denominated in KWH (credits/100).
+
+    Extra keys are stored verbatim for the same forward-compatibility reason
+    as :class:`XCTSkillToolRef`.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    kwh_per_use: Optional[float] = Field(default=None, ge=0)
 
 
 class XCTSkillCreate(BaseModel):
@@ -22,6 +49,8 @@ class XCTSkillCreate(BaseModel):
     team_id: Optional[str] = None
     is_public: bool = False
     version: Optional[str] = "1"
+    tools: Optional[List[XCTSkillToolRef]] = None
+    pricing: Optional[XCTSkillPricing] = None
     xct_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -35,6 +64,8 @@ class XCTSkillPatch(BaseModel):
     tool_schema: Optional[Dict[str, Any]] = None
     is_public: Optional[bool] = None
     version: Optional[str] = None
+    tools: Optional[List[XCTSkillToolRef]] = None
+    pricing: Optional[XCTSkillPricing] = None
     xct_metadata: Optional[Dict[str, Any]] = None
 
 
@@ -55,6 +86,11 @@ class XCTSkill(BaseModel):
     created_by: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Surfaced from ``xct_metadata["tools"]`` / ``xct_metadata["pricing"]`` —
+    # the manifest lives inside the metadata JSON column (no DB migration),
+    # but consumers read it as first-class fields.
+    tools: Optional[List[Dict[str, Any]]] = None
+    pricing: Optional[Dict[str, Any]] = None
     xct_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
