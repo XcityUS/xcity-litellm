@@ -1346,6 +1346,28 @@ model LiteLLM_MemoryTable {
   @@index([team_id])
 }
 
+// User-scoped context documents (preferences, org knowledge, notes) shared
+// across Xcity OS, xct-chat, and xct-home through tokenhub. Served by
+// /v1/xct-context (litellm/proxy/context_endpoints). The 256 KB content
+// limit is enforced at the API layer, not the DB.
+model LiteLLM_XctContextTable {
+  context_id   String   @id @default(uuid())
+  title        String
+  content      String   // Document body; 256 KB max enforced at the API layer
+  tags         Json?
+  xct_metadata Json?    @default("{}")
+  user_id      String?
+  team_id      String?
+  is_public    Boolean  @default(false)
+  created_at   DateTime @default(now())
+  created_by   String?
+  updated_at   DateTime @default(now()) @updatedAt
+  updated_by   String?
+
+  @@index([user_id])
+  @@index([team_id])
+}
+
 // Per-(router, request_type, model) Beta posterior for the adaptive router.
 model LiteLLM_AdaptiveRouterState {
   router_name     String
