@@ -195,6 +195,12 @@ def test_gateway_drops_ui_and_swagger_mounts():
             f"Mount {path} must not be served by the gateway"
 
 
+def test_gateway_keeps_key_info_only():
+    assert "/key/info" in GATEWAY_EXACT_PATHS
+    assert "/key/generate" not in GATEWAY_EXACT_PATHS
+    assert not any("/key/".startswith(prefix) for prefix in GATEWAY_PATH_PREFIXES)
+
+
 def test_every_app_mount_is_assigned_to_a_component():
     """Every Mount on the proxy app must be consciously assigned to a component.
 
