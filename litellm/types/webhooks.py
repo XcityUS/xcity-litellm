@@ -1,10 +1,9 @@
 """Pydantic types for webhook subscriptions (S6-04)."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # Known event names that the dispatcher emits. Subscribers may register any
 # string; unknown events simply never fire. Kept here for SDK type generation.
@@ -18,34 +17,34 @@ KNOWN_WEBHOOK_EVENTS = (
 
 class WebhookSubscriptionCreate(BaseModel):
     target_url: str
-    events: List[str] = Field(..., min_length=1)
-    app_id: Optional[str] = None
-    team_id: Optional[str] = None
-    filters: Optional[Dict[str, Any]] = None
+    events: list[str] = Field(..., min_length=1)
+    app_id: str | None = None
+    team_id: str | None = None
+    filters: dict[str, Any] | None = None
     is_active: bool = True
 
 
 class WebhookSubscriptionPatch(BaseModel):
-    target_url: Optional[str] = None
-    events: Optional[List[str]] = None
-    filters: Optional[Dict[str, Any]] = None
-    is_active: Optional[bool] = None
+    target_url: str | None = None
+    events: list[str] | None = None
+    filters: dict[str, Any] | None = None
+    is_active: bool | None = None
 
 
 class WebhookSubscription(BaseModel):
     subscription_id: str
-    app_id: Optional[str] = None
-    team_id: Optional[str] = None
-    user_id: Optional[str] = None
-    events: List[str] = Field(default_factory=list)
+    app_id: str | None = None
+    team_id: str | None = None
+    user_id: str | None = None
+    events: list[str] = Field(default_factory=list)
     target_url: str
-    filters: Optional[Dict[str, Any]] = None
+    filters: dict[str, Any] | None = None
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    created_by: Optional[str] = None
-    updated_at: Optional[datetime] = None
-    last_success_at: Optional[datetime] = None
-    last_failure_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    created_by: str | None = None
+    updated_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
     consecutive_failures: int = 0
 
 

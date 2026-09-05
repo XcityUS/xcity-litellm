@@ -21,7 +21,7 @@ import base64
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
@@ -49,11 +49,7 @@ def _verify_pkce(verifier: str, challenge: str, method: str) -> bool:
     """RFC 7636 §4.6 verification."""
     if method != "S256":
         return False
-    derived = (
-        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
-        .decode()
-        .rstrip("=")
-    )
+    derived = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
     return secrets.compare_digest(derived, challenge)
 
 
@@ -66,7 +62,7 @@ async def _lookup_app_by_client_id(prisma_client, client_id: str):
     return rows[0] if rows else None
 
 
-def _redirect_uri_allowed(uri: str, whitelist: List[str]) -> bool:
+def _redirect_uri_allowed(uri: str, whitelist: list[str]) -> bool:
     """Exact-match. RFC 6749 §3.1.2 — partial matches are not safe."""
     return uri in (whitelist or [])
 
@@ -82,10 +78,10 @@ async def authorize(
     client_id: str = Query(...),
     redirect_uri: str = Query(...),
     response_type: str = Query("code"),
-    state: Optional[str] = Query(None),
+    state: str | None = Query(None),
     code_challenge: str = Query(...),
     code_challenge_method: str = Query("S256"),
-    scope: Optional[str] = Query(None),
+    scope: str | None = Query(None),
 ) -> RedirectResponse:
     """Issue an authorization code + redirect back to the app.
 
@@ -118,18 +114,14 @@ async def authorize(
         raise HTTPException(status_code=400, detail="unknown client_id")
 
     if not _redirect_uri_allowed(redirect_uri, app.redirect_uris):
-        raise HTTPException(
-            status_code=400, detail="redirect_uri not in client whitelist"
-        )
+        raise HTTPException(status_code=400, detail="redirect_uri not in client whitelist")
 
     # Identify the end user. The dashboard SSO sets a cookie; if we don't
     # have one, kick to /sso/login with a return-to that brings the user
     # back here. Until we land that round-trip, accept an explicit
     # x-xct-user-id header for SDK-driven test flows.
     end_user = (
-        request.cookies.get("token")
-        or request.cookies.get("litellm_jwt")
-        or request.headers.get("x-xct-user-id")
+        request.cookies.get("token") or request.cookies.get("litellm_jwt") or request.headers.get("x-xct-user-id")
     )
     if not end_user:
         raise HTTPException(
@@ -174,27 +166,19 @@ async def _consume_authorization_code(
     redirect_uri: str,
     code_verifier: str,
 ):
-    row = await prisma_client.db.litellm_oauthauthorizationcode.find_unique(
-        where={"code": code}
-    )
+    row = await prisma_client.db.litellm_oauthauthorizationcode.find_unique(where={"code": code})
     if row is None:
         raise HTTPException(status_code=400, detail="invalid_grant: code not found")
     if row.consumed_at is not None:
-        raise HTTPException(
-            status_code=400, detail="invalid_grant: code already consumed"
-        )
+        raise HTTPException(status_code=400, detail="invalid_grant: code already consumed")
     if row.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="invalid_grant: code expired")
     if row.client_id != client_id:
         raise HTTPException(status_code=400, detail="invalid_grant: client_id mismatch")
     if row.redirect_uri != redirect_uri:
-        raise HTTPException(
-            status_code=400, detail="invalid_grant: redirect_uri mismatch"
-        )
+        raise HTTPException(status_code=400, detail="invalid_grant: redirect_uri mismatch")
     if not _verify_pkce(code_verifier, row.code_challenge, row.code_challenge_method):
-        raise HTTPException(
-            status_code=400, detail="invalid_grant: PKCE verification failed"
-        )
+        raise HTTPException(status_code=400, detail="invalid_grant: PKCE verification failed")
 
     # Mark consumed before returning so a replay never succeeds even if
     # the caller retries the exchange.
@@ -205,9 +189,7 @@ async def _consume_authorization_code(
     return row
 
 
-async def _verify_client_credentials(
-    prisma_client, client_id: str, client_secret: Optional[str]
-):
+async def _verify_client_credentials(prisma_client, client_id: str, client_secret: str | None):
     app = await _lookup_app_by_client_id(prisma_client, client_id)
     if app is None:
         raise HTTPException(status_code=400, detail="unknown client_id")
@@ -216,9 +198,7 @@ async def _verify_client_credentials(
     # must match.
     if client_secret is not None:
         if _sha256_hex(client_secret) != app.oauth_client_secret_hash:
-            raise HTTPException(
-                status_code=401, detail="invalid_client: secret mismatch"
-            )
+            raise HTTPException(status_code=401, detail="invalid_client: secret mismatch")
     return app
 
 
@@ -232,8 +212,8 @@ async def _issue_token_pair(
     *,
     app,
     user_id: str,
-    scope: List[str],
-) -> Dict[str, Any]:
+    scope: list[str],
+) -> dict[str, Any]:
     """Mint matched access + refresh rows in LiteLLM_VerificationToken.
 
     Both rows carry app_id + the same scope. The access token expires in
@@ -286,13 +266,13 @@ async def _issue_token_pair(
 async def token(
     grant_type: str = Form(...),
     client_id: str = Form(...),
-    client_secret: Optional[str] = Form(None),
-    code: Optional[str] = Form(None),
-    code_verifier: Optional[str] = Form(None),
-    redirect_uri: Optional[str] = Form(None),
-    refresh_token: Optional[str] = Form(None),
-    scope: Optional[str] = Form(None),
-) -> Dict[str, Any]:
+    client_secret: str | None = Form(None),
+    code: str | None = Form(None),
+    code_verifier: str | None = Form(None),
+    redirect_uri: str | None = Form(None),
+    refresh_token: str | None = Form(None),
+    scope: str | None = Form(None),
+) -> dict[str, Any]:
     """Issue an access/refresh token pair.
 
     grant_type ∈ {"authorization_code", "refresh_token"}.
@@ -326,34 +306,22 @@ async def token(
 
     if grant_type == "refresh_token":
         if not refresh_token:
-            raise HTTPException(
-                status_code=400, detail="refresh_token grant requires refresh_token"
-            )
+            raise HTTPException(status_code=400, detail="refresh_token grant requires refresh_token")
         from litellm.proxy.utils import hash_token
 
         hashed = hash_token(refresh_token)
-        row = await prisma_client.db.litellm_verificationtoken.find_unique(
-            where={"token": hashed}
-        )
+        row = await prisma_client.db.litellm_verificationtoken.find_unique(where={"token": hashed})
         if row is None or getattr(row, "token_type", None) != "oauth_refresh":
-            raise HTTPException(
-                status_code=400, detail="invalid_grant: refresh_token unknown"
-            )
+            raise HTTPException(status_code=400, detail="invalid_grant: refresh_token unknown")
         if row.expires and row.expires < datetime.utcnow():
-            raise HTTPException(
-                status_code=400, detail="invalid_grant: refresh_token expired"
-            )
+            raise HTTPException(status_code=400, detail="invalid_grant: refresh_token expired")
         if row.app_id != app.app_id:
-            raise HTTPException(
-                status_code=400, detail="invalid_grant: refresh_token / client mismatch"
-            )
+            raise HTTPException(status_code=400, detail="invalid_grant: refresh_token / client mismatch")
         existing_scope = (row.metadata or {}).get("scope") or []
         requested = scope.split() if scope else existing_scope
         # Scope can be NARROWED, never broadened (RFC 6749 §6).
         granted = [s for s in requested if s in existing_scope]
-        return await _issue_token_pair(
-            prisma_client, app=app, user_id=row.user_id, scope=granted
-        )
+        return await _issue_token_pair(prisma_client, app=app, user_id=row.user_id, scope=granted)
 
     raise HTTPException(
         status_code=400,
@@ -369,10 +337,10 @@ async def token(
 @router.post("/oauth/revoke", tags=["[beta] XCT OAuth"])
 async def revoke(
     token: str = Form(..., description="Access OR refresh token to revoke."),
-    token_type_hint: Optional[str] = Form(None),
-    client_id: Optional[str] = Form(None),
-    client_secret: Optional[str] = Form(None),
-) -> Dict[str, Any]:
+    token_type_hint: str | None = Form(None),
+    client_id: str | None = Form(None),
+    client_secret: str | None = Form(None),
+) -> dict[str, Any]:
     """Soft-revoke an OAuth token (set expires=now).
 
     Per RFC 7009 we return 200 even for unknown tokens — don't leak
@@ -404,7 +372,7 @@ async def introspect(
     token: str = Form(...),
     client_id: str = Form(...),
     client_secret: str = Form(...),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """RFC 7662 — confidential clients can ask whether a token is active.
 
     Requires client credentials so a random caller can't enumerate tokens.
@@ -418,9 +386,7 @@ async def introspect(
     app = await _verify_client_credentials(prisma_client, client_id, client_secret)
 
     hashed = hash_token(token)
-    row = await prisma_client.db.litellm_verificationtoken.find_unique(
-        where={"token": hashed}
-    )
+    row = await prisma_client.db.litellm_verificationtoken.find_unique(where={"token": hashed})
     if row is None:
         return {"active": False}
     if row.app_id != app.app_id:

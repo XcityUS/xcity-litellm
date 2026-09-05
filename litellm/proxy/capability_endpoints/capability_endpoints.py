@@ -24,7 +24,7 @@ everything. Non-admin gets:
 
 import hashlib
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
@@ -51,7 +51,7 @@ router = APIRouter()
 # hammering the registry/DB on every UI render. Override via env in tests.
 CAPABILITIES_CACHE_TTL = int(os.environ.get("LITELLM_CAPABILITIES_CACHE_TTL", "60"))
 # Singleton DualCache; populated lazily so test code can swap it.
-_capabilities_cache: Optional[DualCache] = None
+_capabilities_cache: DualCache | None = None
 
 
 def _get_capabilities_cache() -> DualCache:
@@ -64,7 +64,7 @@ def _get_capabilities_cache() -> DualCache:
     return _capabilities_cache
 
 
-def _hash_token(token: Optional[str]) -> str:
+def _hash_token(token: str | None) -> str:
     """Stable, non-reversible identifier for cache keys."""
     return hashlib.sha256((token or "anon").encode("utf-8")).hexdigest()[:16]
 
@@ -79,10 +79,7 @@ def _capabilities_cache_key(uak: UserAPIKeyAuth) -> str:
 
 def _is_admin(user_api_key_dict: UserAPIKeyAuth) -> bool:
     role = user_api_key_dict.user_role
-    return (
-        role == LitellmUserRoles.PROXY_ADMIN
-        or role == LitellmUserRoles.PROXY_ADMIN.value
-    )
+    return role == LitellmUserRoles.PROXY_ADMIN or role == LitellmUserRoles.PROXY_ADMIN.value
 
 
 def _build_caller(user_api_key_dict: UserAPIKeyAuth) -> CapabilityCaller:
@@ -96,9 +93,7 @@ def _build_caller(user_api_key_dict: UserAPIKeyAuth) -> CapabilityCaller:
     )
 
 
-def _compute_model_capability_flags(
-    model_name: str, info: Dict[str, Any]
-) -> ModelCapabilityFlags:
+def _compute_model_capability_flags(model_name: str, info: dict[str, Any]) -> ModelCapabilityFlags:
     """Snap booleans from litellm.utils.supports_* + the model_cost row.
 
     Each ``supports_*`` helper takes (model, provider) and returns False if the
@@ -129,26 +124,21 @@ def _compute_model_capability_flags(
             return False
 
     return ModelCapabilityFlags(
-        vision=_safe(supports_vision, model_name, provider)
-        or bool(info.get("supports_vision")),
+        vision=_safe(supports_vision, model_name, provider) or bool(info.get("supports_vision")),
         function_calling=_safe(supports_function_calling, model_name, provider)
         or bool(info.get("supports_function_calling")),
         structured_output=_safe(supports_response_schema, model_name, provider)
         or bool(info.get("supports_response_schema")),
         prompt_caching=_safe(supports_prompt_caching, model_name, provider)
         or bool(info.get("supports_prompt_caching")),
-        pdf_input=_safe(supports_pdf_input, model_name, provider)
-        or bool(info.get("supports_pdf_input")),
-        web_search=_safe(supports_web_search, model_name, provider)
-        or bool(info.get("supports_web_search")),
-        audio_input=_safe(supports_audio_input, model_name, provider)
-        or bool(info.get("supports_audio_input")),
-        audio_output=_safe(supports_audio_output, model_name, provider)
-        or bool(info.get("supports_audio_output")),
+        pdf_input=_safe(supports_pdf_input, model_name, provider) or bool(info.get("supports_pdf_input")),
+        web_search=_safe(supports_web_search, model_name, provider) or bool(info.get("supports_web_search")),
+        audio_input=_safe(supports_audio_input, model_name, provider) or bool(info.get("supports_audio_input")),
+        audio_output=_safe(supports_audio_output, model_name, provider) or bool(info.get("supports_audio_output")),
     )
 
 
-def _build_model_summary(model_name: str, info: Dict[str, Any]) -> ModelSummary:
+def _build_model_summary(model_name: str, info: dict[str, Any]) -> ModelSummary:
     return ModelSummary(
         id=model_name,
         provider=info.get("litellm_provider"),
@@ -165,7 +155,7 @@ def _collect_models(
     user_api_key_dict: UserAPIKeyAuth,
     *,
     admin: bool,
-) -> List[ModelSummary]:
+) -> list[ModelSummary]:
     """
     Models visible to the caller.
 
@@ -175,22 +165,17 @@ def _collect_models(
     ``/v1/models`` uses, so the discovery list matches what the caller
     can actually invoke through ``/v1/chat/completions``.
     """
-    model_costs: Dict[str, Any] = getattr(litellm, "model_cost", {}) or {}
+    model_costs: dict[str, Any] = getattr(litellm, "model_cost", {}) or {}
 
     if admin:
-        return [
-            _build_model_summary(name, info)
-            for name, info in model_costs.items()
-            if isinstance(info, dict)
-        ]
+        return [_build_model_summary(name, info) for name, info in model_costs.items() if isinstance(info, dict)]
 
     try:
         from litellm.proxy import proxy_server as _proxy_server
         from litellm.proxy.auth.model_checks import get_complete_model_list
 
         proxy_models = [
-            (m.get("model_name") if isinstance(m, dict) else None)
-            for m in (_proxy_server.llm_model_list or [])
+            (m.get("model_name") if isinstance(m, dict) else None) for m in (_proxy_server.llm_model_list or [])
         ]
         proxy_models = [m for m in proxy_models if m]
 
@@ -220,13 +205,8 @@ def _build_agent_summary(agent) -> AgentSummary:
         agent_name=agent.agent_name,
         description=card.get("description"),
         version=card.get("version"),
-        is_public=bool(
-            litellm.public_agent_groups
-            and agent.agent_id in litellm.public_agent_groups
-        ),
-        supports_streaming=bool(
-            (card.get("capabilities") or {}).get("streaming", False)
-        ),
+        is_public=bool(litellm.public_agent_groups and agent.agent_id in litellm.public_agent_groups),
+        supports_streaming=bool((card.get("capabilities") or {}).get("streaming", False)),
         agent_card_url=f"/a2a/{agent.agent_id}/.well-known/agent-card.json",
     )
 
@@ -235,7 +215,7 @@ async def _collect_agents(
     user_api_key_dict: UserAPIKeyAuth,
     *,
     admin: bool,
-) -> List[AgentSummary]:
+) -> list[AgentSummary]:
     """
     Agents visible to the caller.
 
@@ -284,7 +264,7 @@ async def _collect_mcps(
     user_api_key_dict: UserAPIKeyAuth,
     *,
     admin: bool,
-) -> List[McpSummary]:
+) -> list[McpSummary]:
     """
     MCP servers visible to the caller.
 
@@ -313,11 +293,7 @@ async def _collect_mcps(
             MCPRequestHandler,
         )
 
-        allowed = set(
-            await MCPRequestHandler.get_allowed_mcp_servers(
-                user_api_key_auth=user_api_key_dict
-            )
-        )
+        allowed = set(await MCPRequestHandler.get_allowed_mcp_servers(user_api_key_auth=user_api_key_dict))
     except Exception as e:
         verbose_proxy_logger.debug("capabilities: mcp filter fell back to []: %s", e)
         return []
@@ -329,7 +305,7 @@ async def _collect_skills(
     user_api_key_dict: UserAPIKeyAuth,
     *,
     admin: bool,
-) -> List[SkillSummary]:
+) -> list[SkillSummary]:
     """xct-native skills visible to the caller.
 
     Same scoping shape as ``/v1/xct-skills`` list: admin sees every
@@ -344,9 +320,9 @@ async def _collect_skills(
     if prisma_client is None:
         return []
 
-    where: Dict[str, Any] = {"source": "custom"}
+    where: dict[str, Any] = {"source": "custom"}
     if not admin:
-        caller_clauses: List[Dict[str, Any]] = [{"is_public": True}]
+        caller_clauses: list[dict[str, Any]] = [{"is_public": True}]
         if user_api_key_dict.user_id:
             caller_clauses.append({"user_id": user_api_key_dict.user_id})
         if user_api_key_dict.team_id:
@@ -359,7 +335,7 @@ async def _collect_skills(
         verbose_proxy_logger.debug("capabilities: skill filter fell back to []: %s", e)
         return []
 
-    summaries: List[SkillSummary] = []
+    summaries: list[SkillSummary] = []
     for row in rows:
         summaries.append(
             SkillSummary(
@@ -375,7 +351,7 @@ async def _collect_skills(
     return summaries
 
 
-async def _collect_access_groups() -> List[AccessGroupSummary]:
+async def _collect_access_groups() -> list[AccessGroupSummary]:
     """Placeholder until access-group enumeration is added."""
     return []
 
@@ -426,9 +402,7 @@ async def get_capabilities(
     # intersection with that access group. Empty intersection → empty
     # list (don't fall back to "all").
     if not admin:
-        response = await _intersect_with_app_capability_scope(
-            response, user_api_key_dict
-        )
+        response = await _intersect_with_app_capability_scope(response, user_api_key_dict)
 
     await cache.async_set_cache(cache_key, response, ttl=CAPABILITIES_CACHE_TTL)
     return response
@@ -450,17 +424,13 @@ async def _intersect_with_app_capability_scope(
         # Look up the app and resolve capability_scope_id → access group row.
         # find_unique on app_id is O(1) thanks to the PK; we already cache the
         # whole capability response so this DB hit is once per cache window.
-        app_row = await prisma_client.db.litellm_xctapptable.find_unique(
-            where={"app_id": app_id}
-        )
+        app_row = await prisma_client.db.litellm_xctapptable.find_unique(where={"app_id": app_id})
         if app_row is None:
             return response
         scope_id = getattr(app_row, "capability_scope_id", None)
         if not scope_id:
             return response
-        group = await prisma_client.db.litellm_accessgrouptable.find_unique(
-            where={"access_group_id": scope_id}
-        )
+        group = await prisma_client.db.litellm_accessgrouptable.find_unique(where={"access_group_id": scope_id})
         if group is None:
             return response
 
@@ -473,9 +443,7 @@ async def _intersect_with_app_capability_scope(
         response.mcps = [m for m in response.mcps if m.server_id in allowed_mcps]
         # skills + access_groups untouched — access groups don't constrain those today
     except Exception as e:
-        verbose_proxy_logger.debug(
-            "capability_scope intersect failed for app=%s: %s", app_id, e
-        )
+        verbose_proxy_logger.debug("capability_scope intersect failed for app=%s: %s", app_id, e)
     return response
 
 
@@ -514,9 +482,7 @@ async def invalidate_capabilities_cache_for_caller(
     except AttributeError:
         # Older DualCache without async_delete_cache; fall back to set with
         # a 1-second TTL, expiring within the next polling window.
-        await cache.async_set_cache(
-            _capabilities_cache_key(user_api_key_dict), None, ttl=1
-        )
+        await cache.async_set_cache(_capabilities_cache_key(user_api_key_dict), None, ttl=1)
 
 
 # ============================================================================
@@ -524,9 +490,7 @@ async def invalidate_capabilities_cache_for_caller(
 # ============================================================================
 
 # Wider TTL — public data changes much less often than per-caller scopes.
-PUBLIC_CAPABILITIES_CACHE_TTL = int(
-    os.environ.get("LITELLM_PUBLIC_CAPABILITIES_CACHE_TTL", "300")
-)
+PUBLIC_CAPABILITIES_CACHE_TTL = int(os.environ.get("LITELLM_PUBLIC_CAPABILITIES_CACHE_TTL", "300"))
 _PUBLIC_CACHE_KEY = "capabilities:public"
 
 
@@ -547,7 +511,7 @@ def _public_mcp_allowlist() -> set:
 
 async def _build_public_response() -> PublicCapabilitiesResponse:
     """Snapshot only public-flagged entities. Credential / server URL omitted."""
-    model_costs: Dict[str, Any] = getattr(litellm, "model_cost", {}) or {}
+    model_costs: dict[str, Any] = getattr(litellm, "model_cost", {}) or {}
     public_models = _public_model_allowlist()
     public_mcps = _public_mcp_allowlist()
     public_agents = set(getattr(litellm, "public_agent_groups", None) or [])
@@ -558,7 +522,7 @@ async def _build_public_response() -> PublicCapabilitiesResponse:
         if isinstance(info, dict) and name in public_models
     ]
 
-    agents: List[AgentSummary] = []
+    agents: list[AgentSummary] = []
     try:
         from litellm.proxy.agent_endpoints.agent_registry import global_agent_registry
 
@@ -568,7 +532,7 @@ async def _build_public_response() -> PublicCapabilitiesResponse:
     except Exception as e:
         verbose_proxy_logger.debug("public capabilities: skipped agents (%s)", e)
 
-    mcps: List[McpSummary] = []
+    mcps: list[McpSummary] = []
     try:
         from litellm.proxy._experimental.mcp_server.mcp_server_manager import (
             global_mcp_server_manager,
@@ -590,7 +554,7 @@ async def _build_public_response() -> PublicCapabilitiesResponse:
     except Exception as e:
         verbose_proxy_logger.debug("public capabilities: skipped mcps (%s)", e)
 
-    skills: List[SkillSummary] = []
+    skills: list[SkillSummary] = []
     try:
         from litellm.proxy.proxy_server import prisma_client
 
@@ -606,18 +570,14 @@ async def _build_public_response() -> PublicCapabilitiesResponse:
                         description=getattr(row, "description", None),
                         version=getattr(row, "version", None),
                         source=getattr(row, "source", "custom"),
-                        category=(getattr(row, "xct_metadata", None) or {}).get(
-                            "category"
-                        ),
+                        category=(getattr(row, "xct_metadata", None) or {}).get("category"),
                         is_public=True,
                     )
                 )
     except Exception as e:
         verbose_proxy_logger.debug("public capabilities: skipped skills (%s)", e)
 
-    return PublicCapabilitiesResponse(
-        models=models, agents=agents, mcps=mcps, skills=skills
-    )
+    return PublicCapabilitiesResponse(models=models, agents=agents, mcps=mcps, skills=skills)
 
 
 @router.get(
@@ -636,7 +596,5 @@ async def get_public_capabilities() -> PublicCapabilitiesResponse:
             return PublicCapabilitiesResponse(**hit)
 
     response = await _build_public_response()
-    await cache.async_set_cache(
-        _PUBLIC_CACHE_KEY, response, ttl=PUBLIC_CAPABILITIES_CACHE_TTL
-    )
+    await cache.async_set_cache(_PUBLIC_CACHE_KEY, response, ttl=PUBLIC_CAPABILITIES_CACHE_TTL)
     return response

@@ -13,7 +13,6 @@ admin / IT-ops CRUD layer.
 import hashlib
 import secrets
 import uuid
-from typing import List, Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,9 +39,7 @@ def _is_admin(uak: UserAPIKeyAuth) -> bool:
 
 def _require_admin(uak: UserAPIKeyAuth) -> None:
     if not _is_admin(uak):
-        raise HTTPException(
-            status_code=403, detail="Only proxy admins may manage XCT apps."
-        )
+        raise HTTPException(status_code=403, detail="Only proxy admins may manage XCT apps.")
 
 
 def _generate_client_id() -> str:
@@ -78,12 +75,10 @@ def _validate_redirect_uri(uri: str) -> None:
             detail=f"redirect_uri must not contain wildcards: {uri!r}",
         )
     if parsed.hostname is None:
-        raise HTTPException(
-            status_code=400, detail=f"redirect_uri missing hostname: {uri!r}"
-        )
+        raise HTTPException(status_code=400, detail=f"redirect_uri missing hostname: {uri!r}")
 
 
-def _validate_redirect_uris(uris: List[str]) -> None:
+def _validate_redirect_uris(uris: list[str]) -> None:
     if not uris:
         return
     for uri in uris:
@@ -104,11 +99,7 @@ def _row_to_app(row) -> XCTApp:
         default_scopes=data.get("default_scopes") or [],
         capability_scope_id=data.get("capability_scope_id"),
         rpm_limit=data.get("rpm_limit"),
-        daily_budget=(
-            float(data["daily_budget"])
-            if data.get("daily_budget") is not None
-            else None
-        ),
+        daily_budget=(float(data["daily_budget"]) if data.get("daily_budget") is not None else None),
         is_active=bool(data.get("is_active", True)),
         created_at=data.get("created_at"),
         created_by=data.get("created_by"),
@@ -117,9 +108,7 @@ def _row_to_app(row) -> XCTApp:
 
 
 async def _load_or_404(prisma_client, app_id: str):
-    row = await prisma_client.db.litellm_xctapptable.find_unique(
-        where={"app_id": app_id}
-    )
+    row = await prisma_client.db.litellm_xctapptable.find_unique(where={"app_id": app_id})
     if row is None:
         raise HTTPException(status_code=404, detail=f"XCT app '{app_id}' not found.")
     return row
@@ -182,13 +171,13 @@ async def create_app(
 @router.get(
     "/v1/xct-apps",
     tags=["[beta] XCT Apps"],
-    response_model=List[XCTApp],
+    response_model=list[XCTApp],
 )
 async def list_apps(
-    is_active: Optional[bool] = Query(None),
+    is_active: bool | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
-) -> List[XCTApp]:
+) -> list[XCTApp]:
     _require_admin(user_api_key_dict)
     from litellm.proxy.proxy_server import prisma_client
 
@@ -197,9 +186,7 @@ async def list_apps(
     where: dict = {}
     if is_active is not None:
         where["is_active"] = is_active
-    rows = await prisma_client.db.litellm_xctapptable.find_many(
-        where=where, take=limit, order={"created_at": "desc"}
-    )
+    rows = await prisma_client.db.litellm_xctapptable.find_many(where=where, take=limit, order={"created_at": "desc"})
     return [_row_to_app(r) for r in rows]
 
 
@@ -239,9 +226,7 @@ async def patch_app(
         _validate_redirect_uris(update_data["redirect_uris"])
     if not update_data:
         return await get_app(app_id, user_api_key_dict)
-    row = await prisma_client.db.litellm_xctapptable.update(
-        where={"app_id": app_id}, data=update_data
-    )
+    row = await prisma_client.db.litellm_xctapptable.update(where={"app_id": app_id}, data=update_data)
     return _row_to_app(row)
 
 

@@ -1,6 +1,6 @@
 import math
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
@@ -39,12 +39,12 @@ VIDEO_TASKS_ENDPOINT = "contents/generations/tasks"
 # Video ids whose successful completion has already been billed, with the
 # timestamp of that charge. Ark keeps a task for 7 days, so entries older than
 # that can never be polled again.
-_CHARGED_VIDEO_IDS: Dict[str, float] = {}
+_CHARGED_VIDEO_IDS: dict[str, float] = {}
 _CHARGE_TTL_SECONDS = 7 * 24 * 60 * 60
 _CHARGE_CACHE_MAX = 10_000
 
 
-def _claim_video_charge(video_id: Optional[str]) -> bool:
+def _claim_video_charge(video_id: str | None) -> bool:
     """
     True the first time a given video id is seen as successfully completed.
 
@@ -98,7 +98,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         video_create_optional_params: VideoCreateOptionalRequestParams,
         model: str,
         drop_params: bool,
-    ) -> Dict:
+    ) -> dict:
         """
         Map OpenAI video params to BytePlus:
         - size "1280x720" -> ratio "16:9" (pixels reduced to an aspect ratio)
@@ -107,12 +107,10 @@ class BytePlusVideoConfig(BaseVideoConfig):
           in transform_video_create_request
         - BytePlus-specific params (generate_audio, watermark, ratio, ...) pass through
         """
-        mapped_params: Dict[str, Any] = {}
+        mapped_params: dict[str, Any] = {}
 
         if "input_reference" in video_create_optional_params:
-            mapped_params["input_reference"] = video_create_optional_params[
-                "input_reference"
-            ]
+            mapped_params["input_reference"] = video_create_optional_params["input_reference"]
 
         if "size" in video_create_optional_params:
             # OpenAI `size` is pixel dimensions ("1280x720"); BytePlus `ratio` is an
@@ -130,11 +128,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
             seconds = video_create_optional_params["seconds"]
             if seconds is not None:
                 try:
-                    mapped_params["duration"] = (
-                        int(float(seconds))
-                        if isinstance(seconds, str)
-                        else int(seconds)
-                    )
+                    mapped_params["duration"] = int(float(seconds)) if isinstance(seconds, str) else int(seconds)
                 except (ValueError, TypeError):
                     pass
 
@@ -150,8 +144,8 @@ class BytePlusVideoConfig(BaseVideoConfig):
         self,
         headers: dict,
         model: str,
-        api_key: Optional[str] = None,
-        litellm_params: Optional[GenericLiteLLMParams] = None,
+        api_key: str | None = None,
+        litellm_params: GenericLiteLLMParams | None = None,
     ) -> dict:
         if litellm_params and litellm_params.api_key:
             api_key = api_key or litellm_params.api_key
@@ -160,8 +154,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
 
         if api_key is None:
             raise ValueError(
-                "BYTEPLUS_API_KEY is required. Set BYTEPLUS_API_KEY environment "
-                "variable or pass api_key parameter."
+                "BYTEPLUS_API_KEY is required. Set BYTEPLUS_API_KEY environment variable or pass api_key parameter."
             )
 
         headers.update(
@@ -175,7 +168,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
     def get_complete_url(
         self,
         model: str,
-        api_base: Optional[str],
+        api_base: str | None,
         litellm_params: dict,
     ) -> str:
         api_base = api_base or get_secret_str("BYTEPLUS_API_BASE") or DEFAULT_BASE_URL
@@ -186,10 +179,10 @@ class BytePlusVideoConfig(BaseVideoConfig):
         model: str,
         prompt: str,
         api_base: str,
-        video_create_optional_request_params: Dict,
+        video_create_optional_request_params: dict,
         litellm_params: GenericLiteLLMParams,
         headers: dict,
-    ) -> Tuple[Dict, RequestFiles, str]:
+    ) -> tuple[dict, RequestFiles, str]:
         """
         BytePlus expects:
         {
@@ -212,7 +205,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         """
         params = dict(video_create_optional_request_params)
 
-        content: List[Dict[str, Any]] = []
+        content: list[dict[str, Any]] = []
         if prompt:
             content.append({"type": "text", "text": prompt})
 
@@ -259,14 +252,14 @@ class BytePlusVideoConfig(BaseVideoConfig):
         elif input_reference:
             content.append({"type": "image_url", "image_url": {"url": input_reference}})
 
-        request_data: Dict[str, Any] = {"model": model, "content": content}
+        request_data: dict[str, Any] = {"model": model, "content": content}
         request_data.update(params)
 
-        files_list: List[Tuple[str, Any]] = []
+        files_list: list[tuple[str, Any]] = []
         full_api_base = f"{api_base}/{VIDEO_TASKS_ENDPOINT}"
         return request_data, files_list, full_api_base
 
-    def _map_status(self, status: Optional[str]) -> str:
+    def _map_status(self, status: str | None) -> str:
         """Map BytePlus task status to OpenAI video status."""
         status_map = {
             "queued": "queued",
@@ -279,12 +272,12 @@ class BytePlusVideoConfig(BaseVideoConfig):
 
     def _build_video_object(
         self,
-        response_data: Dict[str, Any],
-        model: Optional[str],
-        custom_llm_provider: Optional[str],
-        request_data: Optional[Dict] = None,
+        response_data: dict[str, Any],
+        model: str | None,
+        custom_llm_provider: str | None,
+        request_data: dict | None = None,
     ) -> VideoObject:
-        video_data: Dict[str, Any] = {
+        video_data: dict[str, Any] = {
             "id": response_data.get("id", ""),
             "object": "video",
             "status": self._map_status(response_data.get("status")),
@@ -321,9 +314,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         video_obj = VideoObject(**video_data)  # type: ignore[arg-type]
 
         if custom_llm_provider and video_obj.id:
-            video_obj.id = encode_video_id_with_provider(
-                video_obj.id, custom_llm_provider, model
-            )
+            video_obj.id = encode_video_id_with_provider(video_obj.id, custom_llm_provider, model)
 
         # Usage drives cost tracking, so it is attached ONLY for a task that
         # actually succeeded, and only the first time we observe that success.
@@ -336,10 +327,8 @@ class BytePlusVideoConfig(BaseVideoConfig):
         # those re-reads would charge the user again — the spend LOG is keyed by
         # request_id and would collapse, but the incremental key/user spend
         # counters would not.
-        usage_data: Dict[str, Any] = {}
-        if video_data["status"] == "completed" and _claim_video_charge(
-            response_data.get("id") or video_obj.id
-        ):
+        usage_data: dict[str, Any] = {}
+        if video_data["status"] == "completed" and _claim_video_charge(response_data.get("id") or video_obj.id):
             if getattr(video_obj, "seconds", None):
                 try:
                     usage_data["duration_seconds"] = float(video_obj.seconds)
@@ -366,9 +355,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         return video_obj
 
     @staticmethod
-    def _resolution_bucket(
-        response_data: Dict[str, Any], request_data: Optional[Dict]
-    ) -> Optional[str]:
+    def _resolution_bucket(response_data: dict[str, Any], request_data: dict | None) -> str | None:
         """Normalize the output resolution to 480p/720p/1080p/4k."""
         raw = response_data.get("resolution")
         if not raw and request_data:
@@ -384,29 +371,24 @@ class BytePlusVideoConfig(BaseVideoConfig):
         return text or None
 
     @staticmethod
-    def _has_video_input(request_data: Optional[Dict]) -> bool:
+    def _has_video_input(request_data: dict | None) -> bool:
         """True when the request carried a reference video (cheaper per token)."""
         if not request_data:
             return False
         content = request_data.get("content")
         if not isinstance(content, list):
             return False
-        return any(
-            isinstance(item, dict) and item.get("type") == "video_url"
-            for item in content
-        )
+        return any(isinstance(item, dict) and item.get("type") == "video_url" for item in content)
 
     def transform_video_create_response(
         self,
         model: str,
         raw_response: httpx.Response,
         logging_obj: LiteLLMLoggingObj,
-        custom_llm_provider: Optional[str] = None,
-        request_data: Optional[Dict] = None,
+        custom_llm_provider: str | None = None,
+        request_data: dict | None = None,
     ) -> VideoObject:
-        return self._build_video_object(
-            raw_response.json(), model, custom_llm_provider, request_data
-        )
+        return self._build_video_object(raw_response.json(), model, custom_llm_provider, request_data)
 
     def transform_video_status_retrieve_request(
         self,
@@ -414,7 +396,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         api_base: str,
         litellm_params: GenericLiteLLMParams,
         headers: dict,
-    ) -> Tuple[str, Dict]:
+    ) -> tuple[str, dict]:
         original_video_id = extract_original_video_id(video_id)
         encoded = encode_url_path_segment(original_video_id, field_name="video_id")
         url = f"{api_base}/{VIDEO_TASKS_ENDPOINT}/{encoded}"
@@ -424,7 +406,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         self,
         raw_response: httpx.Response,
         logging_obj: LiteLLMLoggingObj,
-        custom_llm_provider: Optional[str] = None,
+        custom_llm_provider: str | None = None,
     ) -> VideoObject:
         return self._build_video_object(raw_response.json(), None, custom_llm_provider)
 
@@ -434,8 +416,8 @@ class BytePlusVideoConfig(BaseVideoConfig):
         api_base: str,
         litellm_params: GenericLiteLLMParams,
         headers: dict,
-        variant: Optional[str] = None,
-    ) -> Tuple[str, Dict]:
+        variant: str | None = None,
+    ) -> tuple[str, dict]:
         original_video_id = extract_original_video_id(video_id)
         encoded = encode_url_path_segment(original_video_id, field_name="video_id")
         url = f"{api_base}/{VIDEO_TASKS_ENDPOINT}/{encoded}"
@@ -467,24 +449,17 @@ class BytePlusVideoConfig(BaseVideoConfig):
             )
         )
 
-    def _extract_video_url_from_response(self, response_data: Dict[str, Any]) -> str:
+    def _extract_video_url_from_response(self, response_data: dict[str, Any]) -> str:
         content = response_data.get("content") or {}
         video_url = content.get("video_url") if isinstance(content, dict) else None
         if not video_url:
             status = (response_data.get("status") or "UNKNOWN").lower()
             if status in ("queued", "running"):
-                raise ValueError(
-                    f"Video is still processing (status: {status}). "
-                    "Please wait and try again."
-                )
+                raise ValueError(f"Video is still processing (status: {status}). Please wait and try again.")
             if status == "failed":
                 err = response_data.get("error") or {}
-                raise ValueError(
-                    f"Video generation failed: {err.get('message', 'Unknown error')}"
-                )
-            raise ValueError(
-                "Video URL not found in response. Video may not be ready yet."
-            )
+                raise ValueError(f"Video generation failed: {err.get('message', 'Unknown error')}")
+            raise ValueError("Video URL not found in response. Video may not be ready yet.")
         return video_url
 
     def transform_video_content_response(
@@ -517,7 +492,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
         api_base: str,
         litellm_params: GenericLiteLLMParams,
         headers: dict,
-    ) -> Tuple[str, Dict]:
+    ) -> tuple[str, dict]:
         original_video_id = extract_original_video_id(video_id)
         encoded = encode_url_path_segment(original_video_id, field_name="video_id")
         url = f"{api_base}/{VIDEO_TASKS_ENDPOINT}/{encoded}"
@@ -537,14 +512,10 @@ class BytePlusVideoConfig(BaseVideoConfig):
         )  # type: ignore[arg-type]
 
     # ---- unsupported operations ----
-    def transform_video_remix_request(
-        self, video_id, prompt, api_base, litellm_params, headers, extra_body=None
-    ):
+    def transform_video_remix_request(self, video_id, prompt, api_base, litellm_params, headers, extra_body=None):
         raise NotImplementedError("Video remix is not supported for BytePlus")
 
-    def transform_video_remix_response(
-        self, raw_response, logging_obj, custom_llm_provider=None
-    ):
+    def transform_video_remix_response(self, raw_response, logging_obj, custom_llm_provider=None):
         raise NotImplementedError("Video remix is not supported for BytePlus")
 
     def transform_video_list_request(
@@ -559,26 +530,16 @@ class BytePlusVideoConfig(BaseVideoConfig):
     ):
         raise NotImplementedError("Video listing is not supported for BytePlus")
 
-    def transform_video_list_response(
-        self, raw_response, logging_obj, custom_llm_provider=None
-    ):
+    def transform_video_list_response(self, raw_response, logging_obj, custom_llm_provider=None):
         raise NotImplementedError("Video listing is not supported for BytePlus")
 
-    def transform_video_create_character_request(
-        self, name, video, api_base, litellm_params, headers
-    ):
-        raise NotImplementedError(
-            "video create character is not supported for BytePlus"
-        )
+    def transform_video_create_character_request(self, name, video, api_base, litellm_params, headers):
+        raise NotImplementedError("video create character is not supported for BytePlus")
 
     def transform_video_create_character_response(self, raw_response, logging_obj):
-        raise NotImplementedError(
-            "video create character is not supported for BytePlus"
-        )
+        raise NotImplementedError("video create character is not supported for BytePlus")
 
-    def transform_video_get_character_request(
-        self, character_id, api_base, litellm_params, headers
-    ):
+    def transform_video_get_character_request(self, character_id, api_base, litellm_params, headers):
         raise NotImplementedError("video get character is not supported for BytePlus")
 
     def transform_video_get_character_response(self, raw_response, logging_obj):
@@ -596,9 +557,7 @@ class BytePlusVideoConfig(BaseVideoConfig):
     ):
         raise NotImplementedError("video edit is not supported for BytePlus")
 
-    def transform_video_edit_response(
-        self, raw_response, logging_obj, custom_llm_provider=None, request_data=None
-    ):
+    def transform_video_edit_response(self, raw_response, logging_obj, custom_llm_provider=None, request_data=None):
         raise NotImplementedError("video edit is not supported for BytePlus")
 
     def transform_video_extension_request(
@@ -613,14 +572,10 @@ class BytePlusVideoConfig(BaseVideoConfig):
     ):
         raise NotImplementedError("video extension is not supported for BytePlus")
 
-    def transform_video_extension_response(
-        self, raw_response, logging_obj, custom_llm_provider=None
-    ):
+    def transform_video_extension_response(self, raw_response, logging_obj, custom_llm_provider=None):
         raise NotImplementedError("video extension is not supported for BytePlus")
 
-    def get_error_class(
-        self, error_message: str, status_code: int, headers: Union[dict, httpx.Headers]
-    ) -> BaseLLMException:
+    def get_error_class(self, error_message: str, status_code: int, headers: dict | httpx.Headers) -> BaseLLMException:
         raise BaseLLMException(
             status_code=status_code,
             message=error_message,

@@ -60,7 +60,7 @@ class TestBytePlusImageGeneration:
 
     def test_validate_environment_requires_key(self, monkeypatch):
         monkeypatch.delenv("BYTEPLUS_API_KEY", raising=False)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='BYTEPLUS_API_KEY is not set'):
             self._cfg().validate_environment(
                 headers={},
                 model="m",
@@ -316,7 +316,7 @@ class TestBytePlusVideoGeneration:
             == "https://example.com/v.mp4"
         )
         # Still-processing / failed responses surface a clear error.
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='Video is still processing'):
             cfg._extract_video_url_from_response({"status": "running"})
 
     @pytest.mark.skipif(

@@ -21,9 +21,7 @@ def cost_calculator(
     output_cost_per_image: float = _model_info.get("output_cost_per_image") or 0.0
 
     if not isinstance(image_response, ImageResponse):
-        raise ValueError(
-            f"image_response must be of type ImageResponse got type={type(image_response)}"
-        )
+        raise ValueError(f"image_response must be of type ImageResponse got type={type(image_response)}")
 
     num_images: int = len(image_response.data) if image_response.data else 0
     return output_cost_per_image * num_images

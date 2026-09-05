@@ -8,8 +8,6 @@ pagination deliberately mirror the xct-skills module
 (``litellm.proxy.skill_endpoints.endpoints``).
 """
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from litellm._logging import verbose_proxy_logger
@@ -54,7 +52,7 @@ def _is_admin(uak: UserAPIKeyAuth) -> bool:
     )
 
 
-def _enforce_content_limit(content: Optional[str]) -> None:
+def _enforce_content_limit(content: str | None) -> None:
     """413 when the document body exceeds MAX_CONTEXT_CONTENT_BYTES."""
     if content is None:
         return
@@ -62,10 +60,7 @@ def _enforce_content_limit(content: Optional[str]) -> None:
     if size > MAX_CONTEXT_CONTENT_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=(
-                f"Context content too large: {size} bytes "
-                f"(limit {MAX_CONTEXT_CONTENT_BYTES})."
-            ),
+            detail=(f"Context content too large: {size} bytes (limit {MAX_CONTEXT_CONTENT_BYTES})."),
         )
 
 
@@ -121,23 +116,16 @@ async def _require_writable(context_id: str, uak: UserAPIKeyAuth):
 
     if prisma_client is None:
         raise HTTPException(status_code=503, detail="DB not initialized")
-    row = await prisma_client.db.litellm_xctcontexttable.find_unique(
-        where={"context_id": context_id}
-    )
+    row = await prisma_client.db.litellm_xctcontexttable.find_unique(where={"context_id": context_id})
     if row is None:
-        raise HTTPException(
-            status_code=404, detail=f"Context document '{context_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Context document '{context_id}' not found")
     if _is_admin(uak):
         return row
     if uak.user_id and getattr(row, "user_id", None) == uak.user_id:
         return row
     raise HTTPException(
         status_code=403,
-        detail=(
-            "Only the context document owner or a proxy admin may modify "
-            "this document."
-        ),
+        detail=("Only the context document owner or a proxy admin may modify this document."),
     )
 
 
@@ -167,9 +155,7 @@ async def create_context_doc(
         "xct_metadata": payload.xct_metadata or {},
         "created_by": user_api_key_dict.user_id,
     }
-    row = await prisma_client.db.litellm_xctcontexttable.create(
-        data=_prisma_json_compat(create_data)
-    )
+    row = await prisma_client.db.litellm_xctcontexttable.create(data=_prisma_json_compat(create_data))
     return _row_to_doc(row)
 
 
@@ -179,11 +165,9 @@ async def create_context_doc(
     response_model=XCTContextListResponse,
 )
 async def list_context_docs(
-    q: Optional[str] = Query(None, description="Match title (case-insensitive)."),
-    team_id: Optional[str] = None,
-    cursor: Optional[str] = Query(
-        None, description="context_id of the previous page tail."
-    ),
+    q: str | None = Query(None, description="Match title (case-insensitive)."),
+    team_id: str | None = None,
+    cursor: str | None = Query(None, description="context_id of the previous page tail."),
     limit: int = Query(50, ge=1, le=200),
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> XCTContextListResponse:
@@ -243,22 +227,15 @@ async def get_context_doc(
 
     if prisma_client is None:
         raise HTTPException(status_code=503, detail="DB not initialized")
-    row = await prisma_client.db.litellm_xctcontexttable.find_unique(
-        where={"context_id": context_id}
-    )
+    row = await prisma_client.db.litellm_xctcontexttable.find_unique(where={"context_id": context_id})
     if row is None:
-        raise HTTPException(
-            status_code=404, detail=f"Context document '{context_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Context document '{context_id}' not found")
     # Read scoping: public OR owned OR same team OR admin.
     if not _is_admin(user_api_key_dict):
         if not (
             getattr(row, "is_public", False)
             or getattr(row, "user_id", None) == user_api_key_dict.user_id
-            or (
-                user_api_key_dict.team_id
-                and getattr(row, "team_id", None) == user_api_key_dict.team_id
-            )
+            or (user_api_key_dict.team_id and getattr(row, "team_id", None) == user_api_key_dict.team_id)
         ):
             raise HTTPException(
                 status_code=403,
@@ -306,9 +283,7 @@ async def delete_context_doc(
 
     await _require_writable(context_id, user_api_key_dict)
     try:
-        await prisma_client.db.litellm_xctcontexttable.delete(
-            where={"context_id": context_id}
-        )
+        await prisma_client.db.litellm_xctcontexttable.delete(where={"context_id": context_id})
     except Exception as e:  # pragma: no cover — wrap unexpected DB errors
         verbose_proxy_logger.exception("delete_context_doc failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

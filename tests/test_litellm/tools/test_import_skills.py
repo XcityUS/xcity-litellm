@@ -38,12 +38,12 @@ def test_parse_skill_md_extracts_frontmatter_and_body():
 
 
 def test_parse_skill_md_without_frontmatter_raises():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='no YAML frontmatter'):
         imp.parse_skill_md("# Just a readme\nNo frontmatter here.\n")
 
 
 def test_parse_skill_md_missing_name_raises():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must include a non-empty 'name'"):
         imp.parse_skill_md("---\ndescription: no name\n---\nbody\n")
 
 

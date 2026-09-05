@@ -7,7 +7,6 @@ Delivery (S6-05) and event emission (S6-06) live in sibling modules
 
 import hashlib
 import secrets
-from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -59,9 +58,7 @@ def _validate_target_url(url: str) -> None:
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise HTTPException(
-            status_code=400, detail="target_url must be http:// or https://"
-        )
+        raise HTTPException(status_code=400, detail="target_url must be http:// or https://")
     if not parsed.hostname:
         raise HTTPException(status_code=400, detail="target_url missing hostname")
     host = parsed.hostname.lower()
@@ -110,9 +107,7 @@ async def _load_or_404(prisma_client, subscription_id: str):
         where={"subscription_id": subscription_id}
     )
     if row is None:
-        raise HTTPException(
-            status_code=404, detail=f"Webhook '{subscription_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Webhook '{subscription_id}' not found")
     return row
 
 
@@ -150,9 +145,7 @@ async def create_webhook(
 
     unknown = set(payload.events) - set(KNOWN_WEBHOOK_EVENTS)
     if unknown:
-        verbose_proxy_logger.warning(
-            "Webhook subscribed to unknown event(s) %s — will never fire", unknown
-        )
+        verbose_proxy_logger.warning("Webhook subscribed to unknown event(s) %s — will never fire", unknown)
 
     secret = _generate_secret()
     row = await prisma_client.db.litellm_webhooksubscriptiontable.create(
@@ -178,11 +171,9 @@ async def create_webhook(
     response_model=list[WebhookSubscription],
 )
 async def list_webhooks(
-    app_id: Optional[str] = Query(None),
-    event: Optional[str] = Query(
-        None, description="Filter to subscriptions listening for this event name."
-    ),
-    is_active: Optional[bool] = Query(None),
+    app_id: str | None = Query(None),
+    event: str | None = Query(None, description="Filter to subscriptions listening for this event name."),
+    is_active: bool | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> list[WebhookSubscription]:
@@ -221,10 +212,7 @@ async def get_webhook(
         raise HTTPException(status_code=503, detail="DB not initialized")
     row = await _load_or_404(prisma_client, subscription_id)
     if not _is_admin(user_api_key_dict):
-        if (
-            user_api_key_dict.user_id
-            and getattr(row, "user_id", None) != user_api_key_dict.user_id
-        ):
+        if user_api_key_dict.user_id and getattr(row, "user_id", None) != user_api_key_dict.user_id:
             raise HTTPException(status_code=403, detail="Not your webhook.")
     return _row_to_subscription(row)
 
@@ -262,9 +250,7 @@ async def delete_webhook(
     from litellm.proxy.proxy_server import prisma_client
 
     await _require_writable(prisma_client, subscription_id, user_api_key_dict)
-    await prisma_client.db.litellm_webhooksubscriptiontable.delete(
-        where={"subscription_id": subscription_id}
-    )
+    await prisma_client.db.litellm_webhooksubscriptiontable.delete(where={"subscription_id": subscription_id})
     return {"subscription_id": subscription_id, "deleted": True}
 
 

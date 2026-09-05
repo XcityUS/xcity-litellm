@@ -39,7 +39,7 @@ class TestTencentCloudChatConfig:
     def test_missing_api_key_raises(self):
         config = TencentCloudChatConfig()
 
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ValueError, match='Missing Tencent Cloud API Key') as excinfo:
             config.validate_environment(
                 headers={},
                 model="tencent_cloud/deepseek-v3.1-terminus",

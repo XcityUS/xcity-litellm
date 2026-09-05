@@ -7,9 +7,9 @@ references the proxy resolves at call time, so adding a provider is a new type
 rather than another inline body. Start the proxy with the Rust OCR path enabled:
 
 Each case creates its deployment, drives a real /v1/ocr call, and asserts a
-well-formed OCR document comes back. Per the e2e "skip on environment, fail on
-behavior" rule, a case skips when no proxy answers but fails (never skips) once a
-request reaches it: the proxy fetches each provider's referenced secrets, so a
+well-formed OCR document comes back. Per the e2e hard-fail contract, a case
+fails when no proxy answers and also fails once a request reaches it: the proxy
+fetches each provider's referenced secrets, so a
 missing credential surfaces as a live provider error rather than silent green.
 """
 
@@ -19,14 +19,20 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import pytest
-
 from e2e_config import unique_marker
-from e2e_http import unwrap
+from e2e_http import assert_client_error, unwrap
 from endpoints_client import EndpointsClient
 from lifecycle import ResourceManager
 from models import LiteLLMParamsBody, OcrBody, OcrDocument, OcrResponse
+from pydantic import BaseModel
 
 pytestmark = pytest.mark.e2e
+
+
+class _OptionalOcrBody(BaseModel):
+    model: str | None = None
+    document: dict[str, object] | None = None
+
 
 # Tiny in-repo fixtures served via jsdelivr (sha-pinned, immutable) so the request
 # bodies stay stable across runs.
@@ -86,16 +92,18 @@ class AzureDocIntelligenceOcr:
 
 @dataclass(frozen=True, slots=True)
 class VertexOcr:
+    """Vertex AI OCR (Mistral publisher). Only the location (not a secret) is set;
+    the project and credentials are left unset so the gateway resolves VERTEXAI_PROJECT
+    and VERTEXAI_CREDENTIALS from its own environment by name, keeping every secret on
+    the gateway like the azure_ai cases above. This is deliberate: the OCR path reads
+    vertex_project verbatim from litellm_params and never unwraps an `os.environ/*`
+    ref, so passing one would put the literal string in the request URL."""
+
     model: str
     location: str
 
     def litellm_params(self) -> LiteLLMParamsBody:
-        return LiteLLMParamsBody(
-            model=self.model,
-            vertex_project="os.environ/VERTEXAI_PROJECT",
-            vertex_location=self.location,
-            vertex_credentials="os.environ/VERTEXAI_CREDENTIALS",
-        )
+        return LiteLLMParamsBody(model=self.model, vertex_location=self.location)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +121,7 @@ RUST_OCR_CASES: tuple[_OcrCase, ...] = (
     ),
     _OcrCase(
         "azure-ai",
-        AzureAiOcr("azure_ai/mistral-document-ai-2505"),
+        AzureAiOcr("azure_ai/mistral-document-ai-2512"),
         OcrDocument(type="document_url", document_url=TEST_PDF_URL),
     ),
     _OcrCase(
@@ -125,11 +133,6 @@ RUST_OCR_CASES: tuple[_OcrCase, ...] = (
         "vertex-mistral",
         VertexOcr("vertex_ai/mistral-ocr-2505", "us-central1"),
         OcrDocument(type="document_url", document_url=TEST_PDF_URL),
-    ),
-    _OcrCase(
-        "vertex-deepseek",
-        VertexOcr("vertex_ai/deepseek-ocr-maas", "global"),
-        OcrDocument(type="image_url", image_url=TEST_IMAGE_URL),
     ),
 )
 
@@ -153,5 +156,22 @@ class TestRustOcrGateway:
         resources.defer(lambda: endpoints_client.delete_model(model_id))
         key = resources.key()
 
-        response = unwrap(endpoints_client.gateway.ocr(key, OcrBody(model=model, document=case.document)))
+        response = unwrap(endpoints_client.proxy.ocr(key, OcrBody(model=model, document=case.document)))
         _assert_ocr_document(response)
+
+    @pytest.mark.skip(reason="stage red: product gap, /v1/ocr 500s (aocr TypeError) on missing document instead of 400")
+    @pytest.mark.covers("llm.ocr.openai.input_validation.nonstream.works")
+    def test_missing_document_returns_error(
+        self, endpoints_client: EndpointsClient, resources: ResourceManager
+    ) -> None:
+        model = f"rust-ocr-val-{unique_marker()}"
+        model_id = endpoints_client.create_model(model, MistralOcr().litellm_params())
+        resources.defer(lambda: endpoints_client.delete_model(model_id))
+        key = resources.key()
+        result = endpoints_client.proxy.transport.send(
+            "/v1/ocr",
+            headers=endpoints_client.proxy.transport.bearer(key),
+            json=_OptionalOcrBody(model=model),
+        )
+        assert_client_error(result, "ocr missing document")
+

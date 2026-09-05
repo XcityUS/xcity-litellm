@@ -1,7 +1,6 @@
 """Pydantic types for XCT Apps (S4-03)."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,28 +8,28 @@ from pydantic import BaseModel, Field
 class XCTAppCreate(BaseModel):
     app_name: str = Field(..., description="Internal slug, unique. Used as login hint.")
     display_name: str
-    description: Optional[str] = None
-    icon_url: Optional[str] = None
-    redirect_uris: List[str] = Field(default_factory=list)
-    default_team_id: Optional[str] = None
-    default_scopes: List[str] = Field(default_factory=list)
-    capability_scope_id: Optional[str] = None
-    rpm_limit: Optional[int] = None
-    daily_budget: Optional[float] = None
+    description: str | None = None
+    icon_url: str | None = None
+    redirect_uris: list[str] = Field(default_factory=list)
+    default_team_id: str | None = None
+    default_scopes: list[str] = Field(default_factory=list)
+    capability_scope_id: str | None = None
+    rpm_limit: int | None = None
+    daily_budget: float | None = None
     is_active: bool = True
 
 
 class XCTAppPatch(BaseModel):
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    icon_url: Optional[str] = None
-    redirect_uris: Optional[List[str]] = None
-    default_team_id: Optional[str] = None
-    default_scopes: Optional[List[str]] = None
-    capability_scope_id: Optional[str] = None
-    rpm_limit: Optional[int] = None
-    daily_budget: Optional[float] = None
-    is_active: Optional[bool] = None
+    display_name: str | None = None
+    description: str | None = None
+    icon_url: str | None = None
+    redirect_uris: list[str] | None = None
+    default_team_id: str | None = None
+    default_scopes: list[str] | None = None
+    capability_scope_id: str | None = None
+    rpm_limit: int | None = None
+    daily_budget: float | None = None
+    is_active: bool | None = None
 
 
 class XCTApp(BaseModel):
@@ -39,19 +38,19 @@ class XCTApp(BaseModel):
     app_id: str
     app_name: str
     display_name: str
-    description: Optional[str] = None
-    icon_url: Optional[str] = None
+    description: str | None = None
+    icon_url: str | None = None
     oauth_client_id: str
-    redirect_uris: List[str] = Field(default_factory=list)
-    default_team_id: Optional[str] = None
-    default_scopes: List[str] = Field(default_factory=list)
-    capability_scope_id: Optional[str] = None
-    rpm_limit: Optional[int] = None
-    daily_budget: Optional[float] = None
+    redirect_uris: list[str] = Field(default_factory=list)
+    default_team_id: str | None = None
+    default_scopes: list[str] = Field(default_factory=list)
+    capability_scope_id: str | None = None
+    rpm_limit: int | None = None
+    daily_budget: float | None = None
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    created_by: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    created_by: str | None = None
+    updated_at: datetime | None = None
 
 
 class XCTAppCreateResponse(XCTApp):

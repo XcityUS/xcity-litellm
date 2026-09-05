@@ -27,8 +27,9 @@ the caller can pass in (default no-op).
 import io
 import os
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -36,7 +37,8 @@ from litellm._logging import verbose_proxy_logger
 
 MAX_SKILL_ZIP_SIZE_BYTES = int(
     os.environ.get(
-        "LITELLM_SKILL_UPLOAD_MAX_SIZE_BYTES", str(10 * 1024 * 1024)  # 10 MB
+        "LITELLM_SKILL_UPLOAD_MAX_SIZE_BYTES",
+        str(10 * 1024 * 1024),  # 10 MB
     )
 )
 
@@ -50,18 +52,18 @@ class ParsedSkill:
     """Structured skill payload extracted from a ZIP."""
 
     display_title: str
-    description: Optional[str] = None
-    instructions: Optional[str] = None
-    system_prompt_template: Optional[str] = None
-    tool_schema: Optional[List[Dict[str, Any]]] = None
-    version: Optional[str] = "1"
+    description: str | None = None
+    instructions: str | None = None
+    system_prompt_template: str | None = None
+    tool_schema: list[dict[str, Any]] | None = None
+    version: str | None = "1"
     is_public: bool = False
-    xct_metadata: Dict[str, Any] = field(default_factory=dict)
+    xct_metadata: dict[str, Any] = field(default_factory=dict)
     # Raw archive bytes, persisted into LiteLLM_SkillsTable.file_content so
     # operators can re-download or hand off to a tool that expects the
     # original zip.
     file_content: bytes = b""
-    file_name: Optional[str] = None
+    file_name: str | None = None
     file_type: str = "application/zip"
 
 
@@ -78,7 +80,7 @@ def _noop_scan(_payload: bytes) -> None:  # pragma: no cover — trivial default
     return None
 
 
-def _safe_read(zf: zipfile.ZipFile, name: str) -> Optional[str]:
+def _safe_read(zf: zipfile.ZipFile, name: str) -> str | None:
     """Read a member as UTF-8 text. Returns None when absent."""
     try:
         info = zf.getinfo(name)
@@ -99,18 +101,12 @@ def _validate_archive_safety(zf: zipfile.ZipFile, raw_size: int) -> None:
         we reject any non-regular entry
     """
     if raw_size > MAX_SKILL_ZIP_SIZE_BYTES:
-        raise SkillZipError(
-            f"ZIP too large ({raw_size} > {MAX_SKILL_ZIP_SIZE_BYTES} bytes)."
-        )
+        raise SkillZipError(f"ZIP too large ({raw_size} > {MAX_SKILL_ZIP_SIZE_BYTES} bytes).")
 
     total_uncompressed = 0
     for info in zf.infolist():
         # path traversal / absolute path
-        if (
-            info.filename.startswith("/")
-            or "\\" in info.filename
-            or ".." in info.filename.split("/")
-        ):
+        if info.filename.startswith("/") or "\\" in info.filename or ".." in info.filename.split("/"):
             raise SkillZipError(f"Refusing unsafe path in archive: {info.filename!r}")
         # symlink detection (Unix permission bits in external_attr upper 16)
         unix_mode = (info.external_attr >> 16) & 0xF000
@@ -118,16 +114,14 @@ def _validate_archive_safety(zf: zipfile.ZipFile, raw_size: int) -> None:
             raise SkillZipError(f"Symlinks not allowed in skill ZIP: {info.filename!r}")
         total_uncompressed += info.file_size
         if total_uncompressed > MAX_SKILL_ZIP_SIZE_BYTES:
-            raise SkillZipError(
-                "Uncompressed contents exceed " f"{MAX_SKILL_ZIP_SIZE_BYTES} bytes."
-            )
+            raise SkillZipError(f"Uncompressed contents exceed {MAX_SKILL_ZIP_SIZE_BYTES} bytes.")
 
 
 def parse_skill_zip(
     payload: bytes,
     *,
-    file_name: Optional[str] = None,
-    virus_scan: Optional[VirusScanHook] = None,
+    file_name: str | None = None,
+    virus_scan: VirusScanHook | None = None,
 ) -> ParsedSkill:
     """Parse a skill ZIP and return a structured ParsedSkill."""
     if not payload:
@@ -145,19 +139,15 @@ def parse_skill_zip(
     if not manifest_raw:
         raise SkillZipError("manifest.yaml is required at the archive root.")
     try:
-        manifest: Dict[str, Any] = yaml.safe_load(manifest_raw) or {}
+        manifest: dict[str, Any] = yaml.safe_load(manifest_raw) or {}
     except yaml.YAMLError as e:
         raise SkillZipError(f"manifest.yaml is not valid YAML: {e}") from e
     if not isinstance(manifest, dict):
         raise SkillZipError("manifest.yaml must be a YAML mapping.")
 
-    display_title = str(
-        manifest.get("display_title") or manifest.get("name") or ""
-    ).strip()
+    display_title = str(manifest.get("display_title") or manifest.get("name") or "").strip()
     if not display_title:
-        raise SkillZipError(
-            "manifest.yaml must include a non-empty 'display_title' (or 'name')."
-        )
+        raise SkillZipError("manifest.yaml must include a non-empty 'display_title' (or 'name').")
 
     description = manifest.get("description")
     if not description:
@@ -171,13 +161,11 @@ def parse_skill_zip(
                     description = line
                     break
 
-    system_prompt_template = _safe_read(zf, "SKILL.md") or _safe_read(
-        zf, "system_prompt.md"
-    )
+    system_prompt_template = _safe_read(zf, "SKILL.md") or _safe_read(zf, "system_prompt.md")
     instructions = system_prompt_template  # mirror for legacy callers
 
     tools_raw = _safe_read(zf, "tools.json")
-    tool_schema: Optional[List[Dict[str, Any]]] = None
+    tool_schema: list[dict[str, Any]] | None = None
     if tools_raw:
         try:
             import json as _json
@@ -193,7 +181,7 @@ def parse_skill_zip(
     # The manifest may define arbitrary extension fields under `xct` —
     # everything else (category, tags, domain, model_recommendations …)
     # is stashed there so we don't ossify the schema on day one.
-    xct_metadata: Dict[str, Any] = {}
+    xct_metadata: dict[str, Any] = {}
     if isinstance(manifest.get("xct"), dict):
         xct_metadata.update(manifest["xct"])
     # Promote a few common top-level fields if they appear at the manifest

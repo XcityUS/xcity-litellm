@@ -30,7 +30,8 @@ actually needs:
 Operation IDs are preserved verbatim so codegen output is stable.
 """
 
-from typing import Any, Dict, Set, Tuple
+from collections.abc import Mapping, Set
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -39,7 +40,7 @@ router = APIRouter()
 
 
 # Exact paths that pass through unchanged.
-_PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (
+_PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
     "/v1/capabilities",
     "/.well-known/xct-capabilities",
     "/v1/a2a/",
@@ -63,7 +64,7 @@ _PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (
 
 # Paths where only certain methods are exposed.
 # value = set of allowed lowercase HTTP methods.
-_PUBLIC_RESTRICTED_PATHS: Dict[str, Set[str]] = {
+_PUBLIC_RESTRICTED_PATHS: Mapping[str, Set[str]] = {
     # Agents — read-only on the SDK; write stays admin-side.
     "/v1/agents": {"get"},
     "/v1/agents/{agent_id}": {"get"},
@@ -75,7 +76,7 @@ _PUBLIC_RESTRICTED_PATHS: Dict[str, Set[str]] = {
 }
 
 
-def _path_is_public(path: str, methods: Set[str]) -> Tuple[bool, Set[str]]:
+def _path_is_public(path: str, methods: Set[str]) -> tuple[bool, Set[str]]:
     """Decide whether to keep `path`, and which methods on it."""
     # Restricted-paths take precedence so we don't accidentally over-share
     # via a prefix match.
@@ -88,9 +89,9 @@ def _path_is_public(path: str, methods: Set[str]) -> Tuple[bool, Set[str]]:
     return (False, set())
 
 
-def _filter_openapi(schema: Dict[str, Any]) -> Dict[str, Any]:
+def _filter_openapi(schema: Mapping[str, Any]) -> dict[str, Any]:
     """Return a NEW dict carrying only the public surface."""
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "openapi": schema.get("openapi", "3.1.0"),
         "info": {
             **schema.get("info", {}),
@@ -107,13 +108,13 @@ def _filter_openapi(schema: Dict[str, Any]) -> Dict[str, Any]:
         **({"servers": schema["servers"]} if "servers" in schema else {}),
     }
     src_paths = schema.get("paths") or {}
-    referenced_schemas: Set[str] = set()
+    referenced_schemas: set[str] = set()
     for path, ops in src_paths.items():
         if not isinstance(ops, dict):
             continue
         method_keys = {
             m
-            for m in ops.keys()
+            for m in ops
             if m.lower()
             in {
                 "get",
@@ -160,7 +161,7 @@ def _filter_openapi(schema: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _collect_refs(node: Any, acc: Set[str]) -> None:
+def _collect_refs(node: Any, acc: set[str]) -> None:
     """Recurse the node, recording `#/components/schemas/<Name>` refs."""
     if isinstance(node, dict):
         for k, v in node.items():

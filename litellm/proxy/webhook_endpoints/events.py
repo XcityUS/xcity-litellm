@@ -24,7 +24,6 @@ Event schemas (versioned by ``schema_version`` field):
 """
 
 from datetime import datetime
-from typing import Optional
 
 from litellm._logging import verbose_proxy_logger
 from litellm.proxy.webhook_endpoints.dispatcher import emit_event
@@ -36,13 +35,13 @@ def _now_iso() -> str:
 
 async def emit_capability_invoked(
     *,
-    app_id: Optional[str],
-    entity_type: Optional[str],
-    entity_id: Optional[str],
+    app_id: str | None,
+    entity_type: str | None,
+    entity_id: str | None,
     spend: float,
-    request_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    team_id: Optional[str] = None,
+    request_id: str | None = None,
+    user_id: str | None = None,
+    team_id: str | None = None,
 ) -> None:
     if entity_type is None:
         return  # non-capability rows: no subscriber expects this
@@ -72,7 +71,7 @@ async def emit_budget_exhausted(
     scope_id: str,
     budget: float,
     spend: float,
-    app_id: Optional[str] = None,
+    app_id: str | None = None,
 ) -> None:
     """scope ∈ {'key', 'user', 'team', 'org', 'app'}."""
     try:
@@ -95,8 +94,8 @@ async def emit_budget_exhausted(
 async def emit_agent_healthcheck_failed(
     *,
     agent_id: str,
-    agent_name: Optional[str],
-    error: Optional[str],
+    agent_name: str | None,
+    error: str | None,
 ) -> None:
     try:
         await emit_event(
@@ -115,10 +114,10 @@ async def emit_agent_healthcheck_failed(
 
 async def emit_mcp_tool_called(
     *,
-    server_id: Optional[str],
-    tool_name: Optional[str],
-    namespaced_tool_name: Optional[str],
-    app_id: Optional[str] = None,
+    server_id: str | None,
+    tool_name: str | None,
+    namespaced_tool_name: str | None,
+    app_id: str | None = None,
 ) -> None:
     try:
         await emit_event(

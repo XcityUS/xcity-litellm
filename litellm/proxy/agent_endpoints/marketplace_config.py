@@ -11,7 +11,6 @@ PUT  /v1/xct-marketplace/config  — PROXY_ADMIN only
 """
 
 import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -35,7 +34,7 @@ _CACHE_KEY = "xct-marketplace:config"
 
 class MarketplaceConfig(BaseModel):
     gateway_url: str = Field(..., description="Base URL of the XCT agent gateway.")
-    description: Optional[str] = None
+    description: str | None = None
 
 
 def _is_admin(uak: UserAPIKeyAuth) -> bool:
@@ -89,9 +88,7 @@ async def update_marketplace_config(
             detail="Only proxy admins may change marketplace config.",
         )
     if not body.gateway_url.startswith(("https://", "http://")):
-        raise HTTPException(
-            status_code=400, detail="gateway_url must be an absolute http(s) URL."
-        )
+        raise HTTPException(status_code=400, detail="gateway_url must be an absolute http(s) URL.")
     # Stash on litellm so other modules can read it without a DB lookup.
     litellm.xct_agent_gateway_url = body.gateway_url  # type: ignore[attr-defined]
     await _cache.async_set_cache(_CACHE_KEY, body, ttl=60)

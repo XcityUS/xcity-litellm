@@ -6,8 +6,6 @@ Calls done in OpenAI/openai.py as Tencent Cloud TokenHub is OpenAI-compatible.
 Docs: https://cloud.tencent.com/document/product/1823/130079
 """
 
-from typing import List, Optional, Tuple
-
 from litellm.secret_managers.main import get_secret_str
 from litellm.types.llms.openai import AllMessageValues
 
@@ -16,26 +14,21 @@ from ...openai.chat.gpt_transformation import OpenAIGPTConfig
 
 class TencentCloudChatConfig(OpenAIGPTConfig):
     def _get_openai_compatible_provider_info(
-        self, api_base: Optional[str], api_key: Optional[str]
-    ) -> Tuple[Optional[str], Optional[str]]:
-        api_base = (
-            api_base
-            or get_secret_str("TENCENT_CLOUD_API_BASE")
-            or "https://tokenhub.tencentmaas.com/v1"
-        )
+        self, api_base: str | None, api_key: str | None
+    ) -> tuple[str | None, str | None]:
+        api_base = api_base or get_secret_str("TENCENT_CLOUD_API_BASE") or "https://tokenhub.tencentmaas.com/v1"
         dynamic_api_key = api_key or get_secret_str("TENCENT_CLOUD_API_KEY")
         return api_base, dynamic_api_key
 
     def transform_request(
         self,
         model: str,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
         headers: dict,
     ) -> dict:
-        if model.startswith("tencent_cloud/"):
-            model = model[len("tencent_cloud/") :]
+        model = model.removeprefix("tencent_cloud/")
         return super().transform_request(
             model=model,
             messages=messages,
@@ -48,11 +41,11 @@ class TencentCloudChatConfig(OpenAIGPTConfig):
         self,
         headers: dict,
         model: str,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
     ) -> dict:
         if api_key is None:
             raise ValueError(

@@ -25,7 +25,6 @@ and silently no-ops. A broken metric must NEVER fail a paying request.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from litellm._logging import verbose_logger
 from litellm.integrations.prometheus_helpers.bounded_prometheus_series_tracker import (
@@ -35,9 +34,7 @@ from litellm.integrations.prometheus_helpers.bounded_prometheus_series_tracker i
 _LABEL_NAMES = ("app_id", "entity_type", "entity_id")
 _MAX_SERIES = int(os.environ.get("LITELLM_CAPABILITY_METRIC_MAX_SERIES", "1000"))
 _TTL_SECONDS = int(os.environ.get("LITELLM_CAPABILITY_METRIC_TTL_SECONDS", "3600"))
-_CLEANUP_INTERVAL_SECONDS = int(
-    os.environ.get("LITELLM_CAPABILITY_METRIC_CLEANUP_INTERVAL", "60")
-)
+_CLEANUP_INTERVAL_SECONDS = int(os.environ.get("LITELLM_CAPABILITY_METRIC_CLEANUP_INTERVAL", "60"))
 
 _requests_counter = None
 _spend_counter = None
@@ -94,9 +91,9 @@ def get_capability_registry():
 
 def record_capability_call(
     *,
-    app_id: Optional[str],
-    entity_type: Optional[str],
-    entity_id: Optional[str],
+    app_id: str | None,
+    entity_type: str | None,
+    entity_id: str | None,
     spend: float = 0.0,
 ) -> None:
     """Stamp one capability invocation. Safe to call from anywhere — never raises."""

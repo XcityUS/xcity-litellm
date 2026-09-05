@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -38,9 +38,7 @@ class BytePlusImageGenerationConfig(BaseImageGenerationConfig):
     DEFAULT_BASE_URL: str = "https://ark.ap-southeast.bytepluses.com/api/v3"
     IMAGE_GENERATION_ENDPOINT: str = "images/generations"
 
-    def get_supported_openai_params(
-        self, model: str
-    ) -> List[OpenAIImageGenerationOptionalParams]:
+    def get_supported_openai_params(self, model: str) -> list[OpenAIImageGenerationOptionalParams]:
         return ["n", "response_format", "size"]
 
     def map_openai_params(
@@ -79,16 +77,14 @@ class BytePlusImageGenerationConfig(BaseImageGenerationConfig):
 
     def get_complete_url(
         self,
-        api_base: Optional[str],
-        api_key: Optional[str],
+        api_base: str | None,
+        api_key: str | None,
         model: str,
         optional_params: dict,
         litellm_params: dict,
-        stream: Optional[bool] = None,
+        stream: bool | None = None,
     ) -> str:
-        complete_url: str = (
-            api_base or get_secret_str("BYTEPLUS_API_BASE") or self.DEFAULT_BASE_URL
-        )
+        complete_url: str = api_base or get_secret_str("BYTEPLUS_API_BASE") or self.DEFAULT_BASE_URL
         complete_url = complete_url.rstrip("/")
         return f"{complete_url}/{self.IMAGE_GENERATION_ENDPOINT}"
 
@@ -96,13 +92,13 @@ class BytePlusImageGenerationConfig(BaseImageGenerationConfig):
         self,
         headers: dict,
         model: str,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
     ) -> dict:
-        final_api_key: Optional[str] = api_key or get_secret_str("BYTEPLUS_API_KEY")
+        final_api_key: str | None = api_key or get_secret_str("BYTEPLUS_API_KEY")
         if not final_api_key:
             raise ValueError("BYTEPLUS_API_KEY is not set")
 
@@ -130,8 +126,8 @@ class BytePlusImageGenerationConfig(BaseImageGenerationConfig):
         optional_params: dict,
         litellm_params: dict,
         encoding: Any,
-        api_key: Optional[str] = None,
-        json_mode: Optional[bool] = None,
+        api_key: str | None = None,
+        json_mode: bool | None = None,
     ) -> ImageResponse:
         try:
             response_data = raw_response.json()

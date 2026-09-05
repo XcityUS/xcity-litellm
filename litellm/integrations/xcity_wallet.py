@@ -22,7 +22,7 @@ proxy config:
 """
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -50,11 +50,9 @@ class XcityWalletBilling(CustomLogger):
             self.markup = DEFAULT_MARKUP
         self.enabled = bool(self.base_url and self.service_token)
         if not self.enabled:
-            verbose_logger.info(
-                "[xcity_wallet] disabled — WALLET_BASE_URL / WALLET_SERVICE_TOKEN unset"
-            )
+            verbose_logger.info("[xcity_wallet] disabled — WALLET_BASE_URL / WALLET_SERVICE_TOKEN unset")
 
-    def _resolve_user(self, kwargs: dict) -> Optional[str]:
+    def _resolve_user(self, kwargs: dict) -> str | None:
         """The xct user to bill: end_user (claws / X-Fastclaw-End-User isolation)
         falls back to the key owner's user_id. Both are the GoTrue user UUID."""
         litellm_params = kwargs.get("litellm_params", {}) or {}
@@ -64,9 +62,7 @@ class XcityWalletBilling(CustomLogger):
         metadata = get_litellm_metadata_from_kwargs(kwargs=kwargs) or {}
         return metadata.get("user_api_key_user_id")
 
-    async def async_log_success_event(
-        self, kwargs: dict, response_obj: Any, start_time: Any, end_time: Any
-    ) -> None:
+    async def async_log_success_event(self, kwargs: dict, response_obj: Any, start_time: Any, end_time: Any) -> None:
         if not self.enabled:
             return
         try:
@@ -81,9 +77,7 @@ class XcityWalletBilling(CustomLogger):
 
             xct_user = self._resolve_user(kwargs)
             if not xct_user:
-                verbose_logger.warning(
-                    "[xcity_wallet] no end_user/user_id on call — skipping debit"
-                )
+                verbose_logger.warning("[xcity_wallet] no end_user/user_id on call — skipping debit")
                 return
 
             request_id = sl.get("id") or kwargs.get("litellm_call_id")
@@ -119,9 +113,7 @@ class XcityWalletBilling(CustomLogger):
             # 402 = insufficient credits: expected under post-paid accounting
             # (LiteLLM's key budget is the real-time gate); log, don't raise.
             if resp.status_code not in (200, 402):
-                verbose_logger.warning(
-                    f"[xcity_wallet] debit {resp.status_code} for user={xct_user} req={request_id}"
-                )
+                verbose_logger.warning(f"[xcity_wallet] debit {resp.status_code} for user={xct_user} req={request_id}")
         except Exception as e:  # never break inference on a billing error
             verbose_logger.warning(f"[xcity_wallet] debit failed: {e}")
 

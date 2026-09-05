@@ -18,12 +18,11 @@ Design notes (decided in S1-01 ADR):
   bumping the response ``schema_version``.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from litellm.types.llms.base import LiteLLMPydanticObjectBase
-
 
 CAPABILITIES_SCHEMA_VERSION = "2026-05-19"
 
@@ -31,11 +30,11 @@ CAPABILITIES_SCHEMA_VERSION = "2026-05-19"
 class CapabilityCaller(LiteLLMPydanticObjectBase):
     """Who the capabilities are scoped to."""
 
-    key_id: Optional[str] = None
-    team_id: Optional[str] = None
-    user_id: Optional[str] = None
-    org_id: Optional[str] = None
-    app_id: Optional[str] = None
+    key_id: str | None = None
+    team_id: str | None = None
+    user_id: str | None = None
+    org_id: str | None = None
+    app_id: str | None = None
     is_admin: bool = False
 
 
@@ -61,15 +60,13 @@ class ModelSummary(LiteLLMPydanticObjectBase):
     """One model entry in the capabilities response."""
 
     id: str = Field(..., description="Model name (e.g. 'gpt-4o', 'deepseek-v3.2').")
-    provider: Optional[str] = None
-    mode: Optional[str] = Field(
-        None, description="'chat' | 'embedding' | 'image_generation' | …"
-    )
-    context_window: Optional[int] = None
-    max_output_tokens: Optional[int] = None
+    provider: str | None = None
+    mode: str | None = Field(None, description="'chat' | 'embedding' | 'image_generation' | …")
+    context_window: int | None = None
+    max_output_tokens: int | None = None
     capabilities: ModelCapabilityFlags = Field(default_factory=ModelCapabilityFlags)
-    input_cost_per_token: Optional[float] = None
-    output_cost_per_token: Optional[float] = None
+    input_cost_per_token: float | None = None
+    output_cost_per_token: float | None = None
 
 
 class AgentSummary(LiteLLMPydanticObjectBase):
@@ -77,13 +74,13 @@ class AgentSummary(LiteLLMPydanticObjectBase):
 
     agent_id: str
     agent_name: str
-    description: Optional[str] = None
-    version: Optional[str] = None
+    description: str | None = None
+    version: str | None = None
     is_public: bool = False
-    tags: List[str] = Field(default_factory=list)
-    categories: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
     supports_streaming: bool = False
-    agent_card_url: Optional[str] = Field(
+    agent_card_url: str | None = Field(
         None,
         description="Path to .well-known/agent-card.json for full A2A discovery.",
     )
@@ -93,12 +90,12 @@ class McpSummary(LiteLLMPydanticObjectBase):
     """One MCP server entry in the capabilities response."""
 
     server_id: str
-    server_name: Optional[str] = None
-    alias: Optional[str] = None
-    transport: Optional[str] = Field(None, description="'http' | 'sse' | 'stdio'")
-    tools_count: Optional[int] = None
-    access_groups: List[str] = Field(default_factory=list)
-    auth_type: Optional[str] = None
+    server_name: str | None = None
+    alias: str | None = None
+    transport: str | None = Field(None, description="'http' | 'sse' | 'stdio'")
+    tools_count: int | None = None
+    access_groups: list[str] = Field(default_factory=list)
+    auth_type: str | None = None
     needs_oauth: bool = False
 
 
@@ -106,13 +103,11 @@ class SkillSummary(LiteLLMPydanticObjectBase):
     """One skill entry in the capabilities response."""
 
     skill_id: str
-    display_title: Optional[str] = None
-    description: Optional[str] = None
-    version: Optional[str] = None
-    source: Optional[str] = Field(
-        None, description="'xct' | 'anthropic' | 'custom' | …"
-    )
-    category: Optional[str] = None
+    display_title: str | None = None
+    description: str | None = None
+    version: str | None = None
+    source: str | None = Field(None, description="'xct' | 'anthropic' | 'custom' | …")
+    category: str | None = None
     is_public: bool = False
 
 
@@ -121,7 +116,7 @@ class AccessGroupSummary(LiteLLMPydanticObjectBase):
 
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     model_count: int = 0
     agent_count: int = 0
     mcp_count: int = 0
@@ -132,13 +127,13 @@ class CapabilitiesResponse(LiteLLMPydanticObjectBase):
 
     schema_version: str = CAPABILITIES_SCHEMA_VERSION
     caller: CapabilityCaller
-    models: List[ModelSummary] = Field(default_factory=list)
-    agents: List[AgentSummary] = Field(default_factory=list)
-    mcps: List[McpSummary] = Field(default_factory=list)
-    skills: List[SkillSummary] = Field(default_factory=list)
-    access_groups: List[AccessGroupSummary] = Field(default_factory=list)
+    models: list[ModelSummary] = Field(default_factory=list)
+    agents: list[AgentSummary] = Field(default_factory=list)
+    mcps: list[McpSummary] = Field(default_factory=list)
+    skills: list[SkillSummary] = Field(default_factory=list)
+    access_groups: list[AccessGroupSummary] = Field(default_factory=list)
     # extension point — downstream tools may stash app-specific hints here
-    extensions: Dict[str, Any] = Field(default_factory=dict)
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
 
 class PublicCapabilitiesResponse(LiteLLMPydanticObjectBase):
@@ -150,7 +145,7 @@ class PublicCapabilitiesResponse(LiteLLMPydanticObjectBase):
     """
 
     schema_version: str = CAPABILITIES_SCHEMA_VERSION
-    models: List[ModelSummary] = Field(default_factory=list)
-    agents: List[AgentSummary] = Field(default_factory=list)
-    mcps: List[McpSummary] = Field(default_factory=list)
-    skills: List[SkillSummary] = Field(default_factory=list)
+    models: list[ModelSummary] = Field(default_factory=list)
+    agents: list[AgentSummary] = Field(default_factory=list)
+    mcps: list[McpSummary] = Field(default_factory=list)
+    skills: list[SkillSummary] = Field(default_factory=list)

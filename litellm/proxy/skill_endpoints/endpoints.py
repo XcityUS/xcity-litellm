@@ -13,8 +13,6 @@ semantics in S2-06; chat completion injection in S2-05; capability discovery
 wire-up in S2-04.
 """
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
 from litellm._logging import verbose_proxy_logger
@@ -128,9 +126,7 @@ async def _require_writable(skill_id: str, uak: UserAPIKeyAuth):
 
     if prisma_client is None:
         raise HTTPException(status_code=503, detail="DB not initialized")
-    row = await prisma_client.db.litellm_skillstable.find_unique(
-        where={"skill_id": skill_id}
-    )
+    row = await prisma_client.db.litellm_skillstable.find_unique(where={"skill_id": skill_id})
     if row is None or getattr(row, "source", None) != _XCT_SOURCE:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found")
     if _is_admin(uak):
@@ -168,14 +164,10 @@ async def create_skill(
         "is_public": payload.is_public,
         "team_id": payload.team_id or user_api_key_dict.team_id,
         "user_id": user_api_key_dict.user_id,
-        "xct_metadata": _manifest_into_metadata(
-            payload.xct_metadata or {}, payload.tools, payload.pricing
-        ),
+        "xct_metadata": _manifest_into_metadata(payload.xct_metadata or {}, payload.tools, payload.pricing),
         "created_by": user_api_key_dict.user_id,
     }
-    row = await prisma_client.db.litellm_skillstable.create(
-        data=_prisma_json_compat(create_data)
-    )
+    row = await prisma_client.db.litellm_skillstable.create(data=_prisma_json_compat(create_data))
     return _row_to_skill(row)
 
 
@@ -185,11 +177,9 @@ async def create_skill(
     response_model=XCTSkillListResponse,
 )
 async def list_skills(
-    q: Optional[str] = Query(None, description="Match display_title/description."),
-    team_id: Optional[str] = None,
-    cursor: Optional[str] = Query(
-        None, description="skill_id of the previous page tail."
-    ),
+    q: str | None = Query(None, description="Match display_title/description."),
+    team_id: str | None = None,
+    cursor: str | None = Query(None, description="skill_id of the previous page tail."),
     limit: int = Query(50, ge=1, le=200),
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> XCTSkillListResponse:
@@ -252,9 +242,7 @@ async def get_skill(
 
     if prisma_client is None:
         raise HTTPException(status_code=503, detail="DB not initialized")
-    row = await prisma_client.db.litellm_skillstable.find_unique(
-        where={"skill_id": skill_id}
-    )
+    row = await prisma_client.db.litellm_skillstable.find_unique(where={"skill_id": skill_id})
     if row is None or getattr(row, "source", None) != _XCT_SOURCE:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found")
     # Read scoping: public OR owned OR same team OR admin.
@@ -262,10 +250,7 @@ async def get_skill(
         if not (
             getattr(row, "is_public", False)
             or getattr(row, "user_id", None) == user_api_key_dict.user_id
-            or (
-                user_api_key_dict.team_id
-                and getattr(row, "team_id", None) == user_api_key_dict.team_id
-            )
+            or (user_api_key_dict.team_id and getattr(row, "team_id", None) == user_api_key_dict.team_id)
         ):
             raise HTTPException(
                 status_code=403,
@@ -287,20 +272,14 @@ async def patch_skill(
     from litellm.proxy.proxy_server import prisma_client
 
     row = await _require_writable(skill_id, user_api_key_dict)
-    update_data = {
-        k: v
-        for k, v in patch.model_dump(exclude={"tools", "pricing"}).items()
-        if v is not None
-    }
+    update_data = {k: v for k, v in patch.model_dump(exclude={"tools", "pricing"}).items() if v is not None}
     if patch.tools is not None or patch.pricing is not None:
         # The manifest lives inside xct_metadata: overlay onto the explicitly
         # patched metadata when one was sent, else onto the row's current one.
         base_metadata = update_data.get("xct_metadata")
         if base_metadata is None:
             base_metadata = getattr(row, "xct_metadata", None) or {}
-        update_data["xct_metadata"] = _manifest_into_metadata(
-            base_metadata, patch.tools, patch.pricing
-        )
+        update_data["xct_metadata"] = _manifest_into_metadata(base_metadata, patch.tools, patch.pricing)
     if not update_data:
         # Re-fetch + return; no-op patches shouldn't error.
         return await get_skill(skill_id, user_api_key_dict)
@@ -359,9 +338,7 @@ async def publish_skill(
     xct_meta["published_by"] = user_api_key_dict.user_id
     row = await prisma_client.db.litellm_skillstable.update(
         where={"skill_id": skill_id},
-        data=_prisma_json_compat(
-            {"xct_metadata": xct_meta, "updated_by": user_api_key_dict.user_id}
-        ),
+        data=_prisma_json_compat({"xct_metadata": xct_meta, "updated_by": user_api_key_dict.user_id}),
     )
     return _row_to_skill(row)
 
@@ -396,11 +373,9 @@ async def delete_skill(
     response_model=XCTSkill,
 )
 async def upload_skill_zip(
-    file: UploadFile = File(
-        ..., description="Skill ZIP archive (manifest.yaml + SKILL.md required)."
-    ),
-    team_id: Optional[str] = Form(None),
-    is_public_override: Optional[bool] = Form(
+    file: UploadFile = File(..., description="Skill ZIP archive (manifest.yaml + SKILL.md required)."),
+    team_id: str | None = Form(None),
+    is_public_override: bool | None = Form(
         None,
         description="When set, overrides the is_public flag declared in manifest.yaml.",
     ),
@@ -428,20 +403,14 @@ async def upload_skill_zip(
     ):
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Expected a ZIP upload, got Content-Type: {file.content_type}. "
-                "Use application/zip."
-            ),
+            detail=(f"Expected a ZIP upload, got Content-Type: {file.content_type}. Use application/zip."),
         )
 
     payload = await file.read()
     if len(payload) > MAX_SKILL_ZIP_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=(
-                f"Skill ZIP too large: {len(payload)} bytes "
-                f"(limit {MAX_SKILL_ZIP_SIZE_BYTES})."
-            ),
+            detail=(f"Skill ZIP too large: {len(payload)} bytes (limit {MAX_SKILL_ZIP_SIZE_BYTES})."),
         )
 
     try:
@@ -457,9 +426,7 @@ async def upload_skill_zip(
         "tool_schema": parsed.tool_schema,
         "source": _XCT_SOURCE,
         "version": parsed.version or "1",
-        "is_public": (
-            is_public_override if is_public_override is not None else parsed.is_public
-        ),
+        "is_public": (is_public_override if is_public_override is not None else parsed.is_public),
         "team_id": team_id or user_api_key_dict.team_id,
         "user_id": user_api_key_dict.user_id,
         "xct_metadata": parsed.xct_metadata,
@@ -468,9 +435,7 @@ async def upload_skill_zip(
         "file_type": parsed.file_type,
         "created_by": user_api_key_dict.user_id,
     }
-    row = await prisma_client.db.litellm_skillstable.create(
-        data=_prisma_json_compat(create_data)
-    )
+    row = await prisma_client.db.litellm_skillstable.create(data=_prisma_json_compat(create_data))
     verbose_proxy_logger.info(
         "uploaded xct skill %s (%d bytes, by %s)",
         row.skill_id,

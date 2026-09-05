@@ -25,13 +25,13 @@ import hashlib
 import hmac
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
 from litellm._logging import verbose_proxy_logger
 
-_BACKOFF_SECONDS: List[int] = [1, 5, 30, 120, 600]
+_BACKOFF_SECONDS: list[int] = [1, 5, 30, 120, 600]
 _DELIVERY_TIMEOUT_SECONDS = 10.0
 _DISABLE_AFTER_CONSECUTIVE_FAILURES = 20
 
@@ -41,7 +41,7 @@ def _sign(secret: str, body: bytes) -> str:
     return f"sha256={digest}"
 
 
-def _build_envelope(event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def _build_envelope(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "event": event_type,
         "sent_at": datetime.utcnow().isoformat() + "Z",
@@ -49,9 +49,7 @@ def _build_envelope(event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _matches_filters(
-    filters: Optional[Dict[str, Any]], envelope: Dict[str, Any]
-) -> bool:
+def _matches_filters(filters: dict[str, Any] | None, envelope: dict[str, Any]) -> bool:
     """Tiny filter DSL: top-level keys map to required values in envelope['data'].
 
     No-op (returns True) when filters is None or empty. Filters are AND-ed.
@@ -69,10 +67,10 @@ async def dispatch_to_subscription(
     *,
     subscription,
     event_type: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     max_attempts: int = len(_BACKOFF_SECONDS),
-    secret: Optional[str] = None,
-) -> Dict[str, Any]:
+    secret: str | None = None,
+) -> dict[str, Any]:
     """Synchronous send-with-retry to one subscription.
 
     Returns a dict describing the outcome so the test endpoint can show it
@@ -101,13 +99,11 @@ async def dispatch_to_subscription(
     body_bytes = json.dumps(envelope, separators=(",", ":")).encode()
     signature = _sign(signing_key, body_bytes)
 
-    last_error: Optional[str] = None
+    last_error: str | None = None
     delivered = False
     for attempt in range(1, max_attempts + 1):
         try:
-            async with httpx.AsyncClient(
-                timeout=_DELIVERY_TIMEOUT_SECONDS, follow_redirects=False
-            ) as client:
+            async with httpx.AsyncClient(timeout=_DELIVERY_TIMEOUT_SECONDS, follow_redirects=False) as client:
                 resp = await client.post(
                     target_url,
                     content=body_bytes,
@@ -154,9 +150,9 @@ async def _persist_outcome(
     prisma_client,
     subscription_id: str,
     event_type: str,
-    envelope: Dict[str, Any],
+    envelope: dict[str, Any],
     delivered: bool,
-    last_error: Optional[str],
+    last_error: str | None,
     attempts: int,
 ) -> None:
     """Stamp last_success_at / last_failure_at + DLQ on terminal failure."""
@@ -182,7 +178,7 @@ async def _persist_outcome(
             where={"subscription_id": subscription_id}
         )
         next_failures = (current.consecutive_failures if current else 0) + 1
-        update_data: Dict[str, Any] = {
+        update_data: dict[str, Any] = {
             "last_failure_at": now,
             "consecutive_failures": next_failures,
         }
@@ -209,9 +205,9 @@ async def _persist_outcome(
 
 async def emit_event(
     event_type: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
-    app_id: Optional[str] = None,
+    app_id: str | None = None,
 ) -> None:
     """Fan out an event to every active subscription that listens for it.
 
@@ -225,7 +221,7 @@ async def emit_event(
     if prisma_client is None:
         return
 
-    where: Dict[str, Any] = {
+    where: dict[str, Any] = {
         "is_active": True,
         "events": {"has": event_type},
     }
@@ -233,9 +229,7 @@ async def emit_event(
         where["app_id"] = app_id
 
     try:
-        subs = await prisma_client.db.litellm_webhooksubscriptiontable.find_many(
-            where=where
-        )
+        subs = await prisma_client.db.litellm_webhooksubscriptiontable.find_many(where=where)
     except Exception as e:
         verbose_proxy_logger.debug("emit_event: subscriber lookup failed: %s", e)
         return

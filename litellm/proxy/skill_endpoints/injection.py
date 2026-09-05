@@ -18,14 +18,14 @@ Errors that DO abort: completely unknown ``skill_id`` (HTTP 400), explicit
 ``@version`` requested but no row matches (HTTP 404).
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import HTTPException
 
 from litellm._logging import verbose_proxy_logger
 
 
-def _split_skill_ref(ref: str) -> Tuple[str, Optional[str]]:
+def _split_skill_ref(ref: str) -> tuple[str, str | None]:
     """`"fact-check@v3"` → ``("fact-check", "v3")``; `"summarize"` → ``("summarize", None)``."""
     if "@" in ref:
         skill_id, version = ref.split("@", 1)
@@ -33,7 +33,7 @@ def _split_skill_ref(ref: str) -> Tuple[str, Optional[str]]:
     return ref.strip(), None
 
 
-def _render_prompt(template: Optional[str], inputs: Dict[str, Any]) -> str:
+def _render_prompt(template: str | None, inputs: dict[str, Any]) -> str:
     """Render a system prompt template.
 
     Prefers Jinja2 if available (matches our existing prompt-template
@@ -61,14 +61,12 @@ def _render_prompt(template: Optional[str], inputs: Dict[str, Any]) -> str:
 
 
 def _merge_tools(
-    existing: Optional[List[Dict[str, Any]]],
-    additions: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    existing: list[dict[str, Any]] | None,
+    additions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Merge tool definitions; dedup by ``function.name``."""
-    merged: List[Dict[str, Any]] = list(existing or [])
-    seen = {
-        (t.get("function") or {}).get("name") for t in merged if isinstance(t, dict)
-    }
+    merged: list[dict[str, Any]] = list(existing or [])
+    seen = {(t.get("function") or {}).get("name") for t in merged if isinstance(t, dict)}
     for tool in additions:
         if not isinstance(tool, dict):
             continue
@@ -80,32 +78,28 @@ def _merge_tools(
     return merged
 
 
-async def _fetch_skill_row(skill_id: str, version: Optional[str]):
+async def _fetch_skill_row(skill_id: str, version: str | None):
     """Return the skill row matching (skill_id, version), or None."""
     from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
         return None
-    where: Dict[str, Any] = {"skill_id": skill_id, "source": "custom"}
+    where: dict[str, Any] = {"skill_id": skill_id, "source": "custom"}
     if version is not None:
         where["version"] = version
     try:
         if version is None:
             # Latest by skill_id alone — caller didn't pin a version.
-            return await prisma_client.db.litellm_skillstable.find_unique(
-                where={"skill_id": skill_id}
-            )
+            return await prisma_client.db.litellm_skillstable.find_unique(where={"skill_id": skill_id})
         # Versioned: find_many to allow filtering by source+version, return first.
         rows = await prisma_client.db.litellm_skillstable.find_many(where=where, take=1)
         return rows[0] if rows else None
     except Exception as e:
-        verbose_proxy_logger.debug(
-            "skill fetch failed for %s@%s: %s", skill_id, version, e
-        )
+        verbose_proxy_logger.debug("skill fetch failed for %s@%s: %s", skill_id, version, e)
         return None
 
 
-async def inject_skills_into_chat_request(data: Dict[str, Any]) -> None:
+async def inject_skills_into_chat_request(data: dict[str, Any]) -> None:
     """Mutate ``data`` in place: resolve skills, inject prompt + tools.
 
     Looks for ``data["skills"]`` (list of ``skill_id`` or ``skill_id@version``)
@@ -117,8 +111,8 @@ async def inject_skills_into_chat_request(data: Dict[str, Any]) -> None:
         return
     inputs = data.get("skill_inputs") or {}
 
-    prompt_parts: List[str] = []
-    tool_additions: List[Dict[str, Any]] = []
+    prompt_parts: list[str] = []
+    tool_additions: list[dict[str, Any]] = []
 
     for ref in skill_refs:
         if not isinstance(ref, str):
@@ -145,14 +139,12 @@ async def inject_skills_into_chat_request(data: Dict[str, Any]) -> None:
             tool_additions.extend(t for t in tool_schema if isinstance(t, dict))
 
     if prompt_parts:
-        messages: List[Dict[str, Any]] = data.setdefault("messages", [])
+        messages: list[dict[str, Any]] = data.setdefault("messages", [])
         # Single combined system message at index 0; preserves any existing
         # leading system message by prepending instead of replacing.
         combined = "\n\n".join(prompt_parts)
         if messages and messages[0].get("role") == "system":
-            messages[0]["content"] = (
-                combined + "\n\n" + str(messages[0].get("content") or "")
-            )
+            messages[0]["content"] = combined + "\n\n" + str(messages[0].get("content") or "")
         else:
             messages.insert(0, {"role": "system", "content": combined})
 

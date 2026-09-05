@@ -8,7 +8,7 @@ back onto the live row and also appends a *new* version marking that the
 rollback happened (so the history stays linear).
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -29,12 +29,12 @@ async def snapshot_agent_version(
     *,
     prisma_client,
     agent_id: str,
-    agent_card_params: Dict[str, Any],
-    litellm_params: Optional[Dict[str, Any]] = None,
-    static_headers: Optional[Dict[str, Any]] = None,
-    created_by: Optional[str] = None,
+    agent_card_params: dict[str, Any],
+    litellm_params: dict[str, Any] | None = None,
+    static_headers: dict[str, Any] | None = None,
+    created_by: str | None = None,
     is_rollback: bool = False,
-    rolled_back_from: Optional[int] = None,
+    rolled_back_from: int | None = None,
 ) -> int:
     """Persist one version row and return its version_number.
 
@@ -57,15 +57,11 @@ async def snapshot_agent_version(
         )
         return version_number
     except Exception as e:
-        verbose_proxy_logger.warning(
-            "snapshot_agent_version(%s) failed: %s", agent_id, e
-        )
+        verbose_proxy_logger.warning("snapshot_agent_version(%s) failed: %s", agent_id, e)
         return -1
 
 
-async def snapshot_existing_agent(
-    *, prisma_client, existing_row: Dict[str, Any], created_by: Optional[str]
-) -> int:
+async def snapshot_existing_agent(*, prisma_client, existing_row: dict[str, Any], created_by: str | None) -> int:
     """Snapshot the row's current state before a PUT/PATCH overwrites it."""
     return await snapshot_agent_version(
         prisma_client=prisma_client,
@@ -78,10 +74,10 @@ async def snapshot_existing_agent(
 
 
 async def list_agent_versions(
-    *, prisma_client, agent_id: str, limit: int = 20, cursor: Optional[str] = None
-) -> List[Dict[str, Any]]:
+    *, prisma_client, agent_id: str, limit: int = 20, cursor: str | None = None
+) -> list[dict[str, Any]]:
     """Return version history sorted newest-first."""
-    find_args: Dict[str, Any] = {
+    find_args: dict[str, Any] = {
         "where": {"agent_id": agent_id},
         "order": {"version_number": "desc"},
         "take": limit,
@@ -98,7 +94,7 @@ async def rollback_agent_to_version(
     prisma_client,
     agent_id: str,
     target_version_number: int,
-    created_by: Optional[str],
+    created_by: str | None,
 ):
     """Copy an older version's content back onto the live agent row.
 
@@ -119,9 +115,7 @@ async def rollback_agent_to_version(
             detail=f"Agent version {target_version_number} not found for {agent_id}.",
         )
 
-    live = await prisma_client.db.litellm_agentstable.find_unique(
-        where={"agent_id": agent_id}
-    )
+    live = await prisma_client.db.litellm_agentstable.find_unique(where={"agent_id": agent_id})
     if live is None:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found.")
 
@@ -158,7 +152,7 @@ async def rollback_agent_to_version(
     return updated
 
 
-def _row_to_dict(row) -> Dict[str, Any]:
+def _row_to_dict(row) -> dict[str, Any]:
     if hasattr(row, "model_dump"):
         return row.model_dump()
     if isinstance(row, dict):

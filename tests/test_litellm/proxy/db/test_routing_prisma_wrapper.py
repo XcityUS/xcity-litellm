@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, os.path.abspath("../../../.."))
 
 
 # NOTE: do NOT patch sys.modules["prisma"] file-wide via an autouse fixture.
@@ -626,7 +625,7 @@ async def test_getattr_does_not_block_inside_running_loop_on_expired_token(monke
     assert refresh_calls["count"] == 1
 
 
-def test_writer_get_rds_iam_token_defaults_port_when_unset(monkeypatch):
+def test_writer_get_rds_iam_token_defaults_port_when_unset(monkeypatch, unset_database_url):
     """When DATABASE_PORT is unset, the writer must default to the Postgres
     standard port instead of passing `None` through. Passing None to
     `generate_iam_auth_token` makes botocore embed the literal string
@@ -639,7 +638,6 @@ def test_writer_get_rds_iam_token_defaults_port_when_unset(monkeypatch):
     monkeypatch.setenv("DATABASE_USER", "litellm")
     monkeypatch.setenv("DATABASE_NAME", "litellm")
     monkeypatch.delenv("DATABASE_SCHEMA", raising=False)
-    monkeypatch.delenv("DATABASE_URL", raising=False)
 
     captured: Dict[str, Any] = {}
 
@@ -661,7 +659,7 @@ def test_writer_get_rds_iam_token_defaults_port_when_unset(monkeypatch):
     assert ":5432/litellm" in (new_url or "")
 
 
-def test_writer_get_rds_iam_token_uses_database_host_env_vars(monkeypatch):
+def test_writer_get_rds_iam_token_uses_database_host_env_vars(monkeypatch, unset_database_url):
     """Writer's IAM path (no iam_endpoint configured) reads host/port/user/db
     from the legacy DATABASE_HOST/PORT/USER/NAME env vars and writes the URL
     back to DATABASE_URL — this is the pre-read-replica behavior the patch
@@ -673,7 +671,6 @@ def test_writer_get_rds_iam_token_uses_database_host_env_vars(monkeypatch):
     monkeypatch.setenv("DATABASE_USER", "litellm")
     monkeypatch.setenv("DATABASE_NAME", "litellm")
     monkeypatch.setenv("DATABASE_SCHEMA", "public")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
 
     captured: Dict[str, Any] = {}
 
@@ -993,3 +990,52 @@ async def test_recreate_keeps_writer_unavailable_when_writer_recreate_fails():
         await routing.recreate_prisma_client("writer-url")
 
     assert routing.writer_unavailable is True
+
+
+def test_prisma_client_premints_an_entra_token_for_the_reader(monkeypatch):
+    """Under Azure Entra auth the reader has to be pre-minted the same way the RDS
+    reader already is: Prisma is constructed with a `datasource` URL, so a reader built
+    from the operator's placeholder URL would never carry a real token."""
+    from litellm.proxy.db.prisma_client import PrismaWrapper
+    from litellm.proxy.db.routing_prisma_wrapper import RoutingPrismaWrapper
+    from litellm.proxy.db.token_auth import AzureEntraTokenAuth
+
+    monkeypatch.setenv("AZURE_POSTGRESQL_AUTH", "true")
+    monkeypatch.delenv("IAM_TOKEN_DB_AUTH", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL_READ_REPLICA",
+        "postgresql://litellm%40contoso.com@reader.postgres.database.azure.com:5432/litellm",
+    )
+
+    captured_kwargs: Dict[str, Any] = {}
+
+    class FakePrisma:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+
+        async def connect(self):
+            return None
+
+    fake_prisma_module = MagicMock()
+    fake_prisma_module.Prisma = FakePrisma
+    monkeypatch.setitem(sys.modules, "prisma", fake_prisma_module)
+
+    with patch(
+        "litellm.secret_managers.get_azure_ad_token_provider.get_azure_ad_token_provider",
+        return_value=lambda: "ENTRA-TOKEN",
+    ):
+        from litellm.proxy.utils import PrismaClient
+
+        client = PrismaClient(
+            database_url="postgresql://litellm@writer.postgres.database.azure.com:5432/litellm",
+            proxy_logging_obj=MagicMock(),
+        )
+
+    assert isinstance(client.db, RoutingPrismaWrapper)
+    assert captured_kwargs["datasource"] == {
+        "url": "postgresql://litellm%40contoso.com:ENTRA-TOKEN@reader.postgres.database.azure.com:5432/litellm"
+    }
+    assert os.environ["DATABASE_URL_READ_REPLICA"] == captured_kwargs["datasource"]["url"]
+    assert isinstance(client.db._reader.token_auth, AzureEntraTokenAuth)
+    assert isinstance(client.db._writer.token_auth, AzureEntraTokenAuth)
+    assert isinstance(client.db._writer, PrismaWrapper)

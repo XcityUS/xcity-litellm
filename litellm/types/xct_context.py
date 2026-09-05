@@ -6,7 +6,7 @@ Xcity OS, xct-chat, and xct-home through tokenhub. Mirrors the shapes in
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,20 +23,20 @@ class XCTContextCreate(BaseModel):
 
     title: str
     content: str
-    tags: Optional[List[str]] = None
-    team_id: Optional[str] = None
+    tags: list[str] | None = None
+    team_id: str | None = None
     is_public: bool = False
-    xct_metadata: Dict[str, Any] = Field(default_factory=dict)
+    xct_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class XCTContextPatch(BaseModel):
     """Partial update payload for ``PATCH /v1/xct-context/{id}``."""
 
-    title: Optional[str] = None
-    content: Optional[str] = None
-    tags: Optional[List[str]] = None
-    is_public: Optional[bool] = None
-    xct_metadata: Optional[Dict[str, Any]] = None
+    title: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
+    is_public: bool | None = None
+    xct_metadata: dict[str, Any] | None = None
 
 
 class XCTContextDoc(BaseModel):
@@ -45,16 +45,16 @@ class XCTContextDoc(BaseModel):
     """
 
     context_id: str
-    title: Optional[str] = None
-    content: Optional[str] = None
-    tags: Optional[List[str]] = None
+    title: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
     is_public: bool = False
-    team_id: Optional[str] = None
-    user_id: Optional[str] = None
-    created_by: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    xct_metadata: Dict[str, Any] = Field(default_factory=dict)
+    team_id: str | None = None
+    user_id: str | None = None
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    xct_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class XCTContextListItem(BaseModel):
@@ -67,21 +67,21 @@ class XCTContextListItem(BaseModel):
     """
 
     context_id: str
-    title: Optional[str] = None
-    content_preview: Optional[str] = None
-    tags: Optional[List[str]] = None
+    title: str | None = None
+    content_preview: str | None = None
+    tags: list[str] | None = None
     is_public: bool = False
-    team_id: Optional[str] = None
-    user_id: Optional[str] = None
-    created_by: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    xct_metadata: Dict[str, Any] = Field(default_factory=dict)
+    team_id: str | None = None
+    user_id: str | None = None
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    xct_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class XCTContextListResponse(BaseModel):
     """Cursor-paginated list response for ``GET /v1/xct-context``."""
 
-    data: List[XCTContextListItem]
+    data: list[XCTContextListItem]
     has_more: bool = False
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None

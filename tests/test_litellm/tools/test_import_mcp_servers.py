@@ -110,7 +110,7 @@ def test_parse_remote_listing_ignores_decoy_records_before_the_real_one():
 
 
 def test_parse_remote_listing_no_endpoint_raises():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='no MCP endpoint found'):
         imp.parse_remote_listing("<html>nothing here</html>", slug="empty")
 
 

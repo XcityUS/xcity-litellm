@@ -5,7 +5,7 @@ These live alongside the Anthropic skill types in
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,8 +21,8 @@ class XCTSkillToolRef(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     server_id: str = Field(min_length=1)
-    tool: Optional[str] = None
-    note: Optional[str] = None
+    tool: str | None = None
+    note: str | None = None
 
 
 class XCTSkillPricing(BaseModel):
@@ -34,69 +34,69 @@ class XCTSkillPricing(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    kwh_per_use: Optional[float] = Field(default=None, ge=0)
+    kwh_per_use: float | None = Field(default=None, ge=0)
 
 
 class XCTSkillCreate(BaseModel):
     """Payload for ``POST /v1/xct-skills`` (JSON or multipart-form fields)."""
 
     display_title: str
-    description: Optional[str] = None
-    instructions: Optional[str] = None
-    system_prompt_template: Optional[str] = None
-    tool_schema: Optional[Dict[str, Any]] = None
-    category: Optional[str] = None
-    team_id: Optional[str] = None
+    description: str | None = None
+    instructions: str | None = None
+    system_prompt_template: str | None = None
+    tool_schema: dict[str, Any] | None = None
+    category: str | None = None
+    team_id: str | None = None
     is_public: bool = False
-    version: Optional[str] = "1"
-    tools: Optional[List[XCTSkillToolRef]] = None
-    pricing: Optional[XCTSkillPricing] = None
-    xct_metadata: Dict[str, Any] = Field(default_factory=dict)
+    version: str | None = "1"
+    tools: list[XCTSkillToolRef] | None = None
+    pricing: XCTSkillPricing | None = None
+    xct_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class XCTSkillPatch(BaseModel):
     """Partial update payload for ``PATCH /v1/xct-skills/{id}``."""
 
-    display_title: Optional[str] = None
-    description: Optional[str] = None
-    instructions: Optional[str] = None
-    system_prompt_template: Optional[str] = None
-    tool_schema: Optional[Dict[str, Any]] = None
-    is_public: Optional[bool] = None
-    version: Optional[str] = None
-    tools: Optional[List[XCTSkillToolRef]] = None
-    pricing: Optional[XCTSkillPricing] = None
-    xct_metadata: Optional[Dict[str, Any]] = None
+    display_title: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+    system_prompt_template: str | None = None
+    tool_schema: dict[str, Any] | None = None
+    is_public: bool | None = None
+    version: str | None = None
+    tools: list[XCTSkillToolRef] | None = None
+    pricing: XCTSkillPricing | None = None
+    xct_metadata: dict[str, Any] | None = None
 
 
 class XCTSkill(BaseModel):
     """Full read shape returned by ``GET /v1/xct-skills/{id}``."""
 
     skill_id: str
-    display_title: Optional[str] = None
-    description: Optional[str] = None
-    instructions: Optional[str] = None
-    system_prompt_template: Optional[str] = None
-    tool_schema: Optional[Dict[str, Any]] = None
+    display_title: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+    system_prompt_template: str | None = None
+    tool_schema: dict[str, Any] | None = None
     source: str = "custom"
-    version: Optional[str] = None
+    version: str | None = None
     is_public: bool = False
-    team_id: Optional[str] = None
-    user_id: Optional[str] = None
-    created_by: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    team_id: str | None = None
+    user_id: str | None = None
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     # Surfaced from ``xct_metadata["tools"]`` / ``xct_metadata["pricing"]`` —
     # the manifest lives inside the metadata JSON column (no DB migration),
     # but consumers read it as first-class fields.
-    tools: Optional[List[Dict[str, Any]]] = None
-    pricing: Optional[Dict[str, Any]] = None
-    xct_metadata: Dict[str, Any] = Field(default_factory=dict)
+    tools: list[dict[str, Any]] | None = None
+    pricing: dict[str, Any] | None = None
+    xct_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class XCTSkillListResponse(BaseModel):
     """Cursor-paginated list response for ``GET /v1/xct-skills``."""
 
-    data: List[XCTSkill]
+    data: list[XCTSkill]
     has_more: bool = False
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
