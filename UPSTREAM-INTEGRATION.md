@@ -30,7 +30,7 @@ The upstream UI now requires Node >=24.14.1 and npm >=11.10.0 and uses React 19.
 
 Prisma schema validation passes. The original-to-candidate schema diff contains additions and no DROP or ALTER COLUMN statements. An isolated local PostgreSQL rehearsal loaded the original schema with synthetic key, app and spend records, applied the candidate schema diff in a transaction, and verified ownership, app attribution, spend and skill attribution. A pre-upgrade pg_dump restored successfully into a separate database with matching records and the original schema. The temporary SQL and rehearsal logs from that checkpoint were not retained
 
-This schema-diff rehearsal does not cover the production migration runner, custom migration-only constraints, production data volume, concurrent traffic or restore timing on a production backup. The release inventory and refreshed production backup are recorded below. Production-runner execution and post-deployment verification remain outstanding. No merge commit, push or deployment has been made
+This schema-diff rehearsal does not cover the production migration runner, custom migration-only constraints, production data volume, concurrent traffic or restore timing on a production backup. The release inventory and refreshed production backup are recorded below. Production-runner execution and post-deployment verification remain outstanding. The merge was committed as fdb60502e2 and CI coverage was completed in 188149b890; both were pushed to the default branch
 
 
 ## Release tracking
@@ -50,3 +50,9 @@ Upstream strict quality ceilings do not cover all violations already present in 
 A refreshed production PostgreSQL backup completed at /Users/javen/.local/state/tokenhub-backups/before-upstream-v1.99.1-20260905-192634.dump (40,265,692 bytes, mode 0600); pg_restore --list succeeds. This is an archive readability check, not a timed full production restore
 
 Budget ratcheting completed: strict Ruff ceilings reduced by 2,267, type-discipline ceilings by 72, test-quality ceilings by 499 and basedpyright ceilings by 16,207 versus the fork branch point. Final make pre-commit passes: Python lint and budgets, e2e type checks, dashboard formatting/lint/budgets and generated API-type synchronization
+
+## Capability discovery follow-up
+
+Production deployment 9bc8f646-e5df-4d1f-a7e4-fa7c543a5e4a reached SUCCESS on commit 188149b890. Liveness and database readiness passed and the same 33 model IDs were retained. A capabilities request exposed a blocking provider-authentication path: supports_* helpers resolve ChatGPT credentials and wait for a device login. The service was restarted and liveness recovered before further discovery requests were attempted
+
+Discovery now reads the existing model-cost capability metadata without calling provider resolution or authentication. The sample_spec documentation entry is excluded from the model catalog. The complete local catalog (3,226 entries) builds in 0.014 seconds; 131 capability and model-listing regressions pass. A guarded before/after check confirms provider initialization was called by the previous implementation and is never called by the fix. Deployment verification of this follow-up is pending

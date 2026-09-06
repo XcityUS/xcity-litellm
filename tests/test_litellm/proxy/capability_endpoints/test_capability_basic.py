@@ -5,7 +5,7 @@ S1-02 verified the envelope shape with admin role (sees everything).
 S1-03 adds scoping for non-admin callers — see TestCapabilitiesScoping.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -539,8 +539,8 @@ class TestPublicCapabilities:
 # ============================================================================
 
 
-def test_model_capability_flags_populate_from_supports_helpers(monkeypatch):
-    """ModelSummary.capabilities should reflect supports_* helper output."""
+def test_model_capability_flags_populate_from_cached_metadata():
+    """ModelSummary capabilities reflect the cached model metadata."""
     from litellm.proxy.capability_endpoints.capability_endpoints import (
         _build_model_summary,
     )
@@ -550,7 +550,6 @@ def test_model_capability_flags_populate_from_supports_helpers(monkeypatch):
         "mode": "chat",
         "max_input_tokens": 128000,
         "max_output_tokens": 4096,
-        # Direct hints in the row so we test both fall-through paths.
         "supports_vision": True,
         "supports_function_calling": True,
         "supports_pdf_input": True,
@@ -565,6 +564,48 @@ def test_model_capability_flags_populate_from_supports_helpers(monkeypatch):
     assert flags.prompt_caching is True
     assert flags.structured_output is True
     assert summary.context_window == 128000
+
+
+def test_capability_metadata_does_not_initialize_provider_authentication():
+    from litellm.proxy.capability_endpoints.capability_endpoints import (
+        _compute_model_capability_flags,
+    )
+
+    info = {"litellm_provider": "chatgpt", "supports_vision": True}
+    with patch.multiple(
+        "litellm.utils",
+        supports_vision=DEFAULT,
+        supports_function_calling=DEFAULT,
+        supports_response_schema=DEFAULT,
+        supports_prompt_caching=DEFAULT,
+        supports_pdf_input=DEFAULT,
+        supports_web_search=DEFAULT,
+        supports_audio_input=DEFAULT,
+        supports_audio_output=DEFAULT,
+    ) as provider_helpers:
+        flags = _compute_model_capability_flags("chatgpt/discovery-only", info)
+
+    assert flags.vision is True
+    assert flags.function_calling is False
+    assert all(helper.call_count == 0 for helper in provider_helpers.values())
+
+
+def test_model_catalog_excludes_cost_map_documentation(monkeypatch):
+    from litellm.proxy.capability_endpoints.capability_endpoints import _collect_models
+
+    monkeypatch.setattr(
+        litellm,
+        "model_cost",
+        {
+            "sample_spec": {"max_input_tokens": "documentation, not a token limit"},
+            "catalog-model": {"max_input_tokens": 4096, "supports_vision": True},
+        },
+    )
+    models = _collect_models(UserAPIKeyAuth(), admin=True)
+
+    assert tuple(model.id for model in models) == ("catalog-model",)
+    assert models[0].context_window == 4096
+    assert models[0].capabilities.vision is True
 
 
 def test_create_model_info_response_includes_capabilities(monkeypatch):
