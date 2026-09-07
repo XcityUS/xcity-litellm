@@ -36,8 +36,7 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
     PATH="/app/.venv/bin:${PATH}"
 
 # Stage 1 — install dependencies only.
-RUN --mount=type=cache,target=/root/.cache/uv,id=litellm-gateway-uv-cache \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
@@ -52,8 +51,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=litellm-gateway-uv-cache \
 # Stage 2 — copy source and install the project + workspace members.
 COPY . .
 
-RUN --mount=type=cache,target=/root/.cache/uv,id=litellm-gateway-uv-cache \
-    uv sync --frozen --no-default-groups --no-editable \
+RUN uv sync --frozen --no-default-groups --no-editable \
         --extra proxy \
         --extra proxy-runtime \
         --extra extra_proxy \
