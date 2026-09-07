@@ -213,6 +213,7 @@ def string_key_schemas(modes: tuple) -> dict[str, JsonSchema]:
             "enum": ["low", "medium", "high", "max", "xhigh"],
         },
         "comment": STRING,
+        "notes": STRING,
         "audio_transcription_config": STRING,
     }
 

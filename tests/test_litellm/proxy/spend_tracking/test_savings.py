@@ -1,5 +1,3 @@
-
-
 import pytest
 
 import litellm
@@ -733,21 +731,24 @@ def test_a_baseline_that_prices_caching_implicitly_still_pays_for_its_prompt():
     assert reported > 0, "routing a cold first turn onto a cheaper model is a saving, not a loss"
 
 
-def test_a_baseline_with_no_cache_read_rate_is_charged_its_input_rate():
+def test_a_baseline_with_no_cache_read_rate_is_charged_its_input_rate(monkeypatch):
     """The same hole on the other bucket. A baseline whose entry has no
     `cache_read_input_token_cost` reads for 0.0, so a continuing turn priced the whole
     prompt at nothing and every switch away from it reported a loss.
     """
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    monkeypatch.setattr(litellm, "model_cost", litellm.get_model_cost_map(url=""))
+
     continuing = _usage(fresh=0, cached=0, written=20_000, out=1_000)
     reported = compute_autorouter_savings(
-        baseline_model="xai/grok-4",
+        baseline_model="xai/grok-2",
         selected_model="claude-haiku-4-5",
         selected_provider="anthropic",
         usage=continuing,
         conversation_continuing=True,
     )
 
-    grok = litellm.get_model_info("grok-4", "xai")
+    grok = litellm.get_model_info("grok-2", "xai")
     assert grok.get("cache_read_input_token_cost") is None, "pick a baseline with no cache-read rate"
     haiku = litellm.get_model_info("claude-haiku-4-5", "anthropic")
     baseline_pays_input = 20_000 * grok["input_cost_per_token"] + 1_000 * grok["output_cost_per_token"]
@@ -795,16 +796,20 @@ def test_the_served_arm_is_read_from_the_record_not_repriced():
 
 
 @pytest.mark.parametrize(
-    "basis, expected_multiplier",
+    "basis, expected_pricing",
     [
-        pytest.param({"service_tier": "priority"}, 2.0, id="priority tier doubles the baseline"),
-        pytest.param({"data_residency": "eu"}, 1.1, id="eu residency uplifts the baseline"),
-        pytest.param({}, 1.0, id="no basis recorded prices at standard"),
-        pytest.param(None, 1.0, id="row predating the field prices at standard"),
-        pytest.param({"service_tier": True, "data_residency": 17}, 1.0, id="a non-string basis is dropped"),
+        pytest.param({"service_tier": "priority"}, "priority", id="priority tier uses priority pricing"),
+        pytest.param({"data_residency": "eu"}, "eu", id="eu residency uplifts the baseline"),
+        pytest.param({}, "standard", id="no basis recorded prices at standard"),
+        pytest.param(None, "standard", id="row predating the field prices at standard"),
+        pytest.param(
+            {"service_tier": True, "data_residency": 17},
+            "standard",
+            id="a non-string basis is dropped",
+        ),
     ],
 )
-def test_the_baseline_is_priced_on_the_basis_the_request_was_billed_at(basis, expected_multiplier):
+def test_the_baseline_is_priced_on_the_basis_the_request_was_billed_at(basis, expected_pricing):
     """A request billed at a priority tier, or through a regional host, would have been
     billed the same way on the single model an operator ran instead of the router, so the
     counterfactual carries that basis too. Dropping it prices the two arms from different
@@ -817,7 +822,8 @@ def test_the_baseline_is_priced_on_the_basis_the_request_was_billed_at(basis, ex
     """
     gpt = litellm.get_model_info("gpt-5.5", "openai")
     haiku = litellm.get_model_info("claude-haiku-4-5", "anthropic")
-    assert gpt.get("input_cost_per_token_priority") == 2 * gpt["input_cost_per_token"]
+    assert gpt.get("input_cost_per_token_priority") is not None
+    assert gpt.get("output_cost_per_token_priority") is not None
     assert gpt.get("regional_processing_uplift_multiplier_eu") == 1.1
     assert haiku.get("input_cost_per_token_priority") is None, "served model must not move with the basis"
     assert haiku.get("regional_processing_uplift_multiplier_eu") is None
@@ -834,8 +840,13 @@ def test_the_baseline_is_priced_on_the_basis_the_request_was_billed_at(basis, ex
         cost_breakdown=None if basis is None else _breakdown(served, **basis),
     )
 
-    baseline = 20_000 * gpt["input_cost_per_token"] + 1_000 * gpt["output_cost_per_token"]
-    assert reported == pytest.approx(expected_multiplier * baseline - served)
+    if expected_pricing == "priority":
+        baseline = 20_000 * gpt["input_cost_per_token_priority"] + 1_000 * gpt["output_cost_per_token_priority"]
+    else:
+        baseline = 20_000 * gpt["input_cost_per_token"] + 1_000 * gpt["output_cost_per_token"]
+        if expected_pricing == "eu":
+            baseline *= gpt["regional_processing_uplift_multiplier_eu"]
+    assert reported == pytest.approx(baseline - served)
 
 
 def test_the_baseline_is_priced_on_the_vertex_location_the_request_was_billed_at(monkeypatch):

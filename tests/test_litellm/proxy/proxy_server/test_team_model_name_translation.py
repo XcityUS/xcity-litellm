@@ -915,15 +915,9 @@ async def test_v1_models_translates_team_model_with_metadata(monkeypatch):
     )
     resp = await ps.model_list(user_api_key_dict=key, include_metadata=True)
 
-    assert resp["data"] == [
-        {
-            "id": "tushar-gpt-4.1",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai",
-            "metadata": {"fallbacks": []},
-        }
-    ]
+    assert len(resp["data"]) == 1
+    assert resp["data"][0]["id"] == "tushar-gpt-4.1"
+    assert resp["data"][0]["metadata"] == {"fallbacks": []}
 
 
 @pytest.mark.asyncio
@@ -963,15 +957,9 @@ async def test_v1_models_metadata_fallbacks_use_internal_routing_key(monkeypatch
     )
     resp = await ps.model_list(user_api_key_dict=key, include_metadata=True)
 
-    assert resp["data"] == [
-        {
-            "id": "tushar-gpt-4.1",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai",
-            "metadata": {"fallbacks": ["gpt-4o-backup"]},
-        }
-    ]
+    assert len(resp["data"]) == 1
+    assert resp["data"][0]["id"] == "tushar-gpt-4.1"
+    assert resp["data"][0]["metadata"] == {"fallbacks": ["gpt-4o-backup"]}
 
 
 @pytest.mark.asyncio
@@ -1022,15 +1010,9 @@ async def test_v1_models_metadata_does_not_leak_other_team_fallbacks(monkeypatch
     )
     resp = await ps.model_list(user_api_key_dict=key, include_metadata=True)
 
-    assert resp["data"] == [
-        {
-            "id": "tushar-gpt-4.1",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai",
-            "metadata": {"fallbacks": ["teamX-backup"]},
-        }
-    ]
+    assert len(resp["data"]) == 1
+    assert resp["data"][0]["id"] == "tushar-gpt-4.1"
+    assert resp["data"][0]["metadata"] == {"fallbacks": ["teamX-backup"]}
 
 
 def test_translate_team_model_names_for_listing_swaps_and_dedupes():

@@ -22,13 +22,13 @@ proxy config:
 """
 
 import os
-from typing import Any
-
-import httpx
+from typing import Any, Final
 
 from litellm._logging import verbose_logger
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.core_helpers import get_litellm_metadata_from_kwargs
+from litellm.llms.custom_httpx.http_handler import get_async_httpx_client
+from litellm.types.llms.custom_http import httpxSpecialProvider
 from litellm.utils import get_end_user_id_for_cost_tracking
 
 # 1 USD = 1000 credits (wallet internal peg); KWH is credits/100.
@@ -49,6 +49,14 @@ class XcityWalletBilling(CustomLogger):
         except (TypeError, ValueError):
             self.markup = DEFAULT_MARKUP
         self.enabled = bool(self.base_url and self.service_token)
+        self.async_http_handler = (
+            get_async_httpx_client(
+                llm_provider=httpxSpecialProvider.LoggingCallback,
+                params={"timeout": 5.0},  # mutable-ok: shared HTTP client factory requires a dict
+            )
+            if self.enabled
+            else None
+        )
         if not self.enabled:
             verbose_logger.info("[xcity_wallet] disabled — WALLET_BASE_URL / WALLET_SERVICE_TOKEN unset")
 
@@ -104,18 +112,26 @@ class XcityWalletBilling(CustomLogger):
                 if isinstance(v, int) and v >= 0:
                     payload[k] = v
 
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.post(
-                    f"{self.base_url}/v1/wallet/debit",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {self.service_token}"},
-                )
+            if self.async_http_handler is None:
+                return
+            resp: Final = await self.async_http_handler.post(
+                f"{self.base_url}/v1/wallet/debit",
+                json=payload,
+                headers={  # mutable-ok: HTTP handler requires a dict of request headers
+                    "Authorization": f"Bearer {self.service_token}"
+                },
+            )
             # 402 = insufficient credits: expected under post-paid accounting
             # (LiteLLM's key budget is the real-time gate); log, don't raise.
             if resp.status_code not in (200, 402):
-                verbose_logger.warning(f"[xcity_wallet] debit {resp.status_code} for user={xct_user} req={request_id}")
+                verbose_logger.warning(
+                    "[xcity_wallet] debit %s for user=%s req=%s",
+                    resp.status_code,
+                    xct_user,
+                    request_id,
+                )
         except Exception as e:  # never break inference on a billing error
-            verbose_logger.warning(f"[xcity_wallet] debit failed: {e}")
+            verbose_logger.warning("[xcity_wallet] debit failed: %s", e)
 
 
 xcity_wallet_billing_instance = XcityWalletBilling()

@@ -71,7 +71,18 @@ async def test_get_agents_allowed_when_not_disabled():
                 "litellm.proxy.agent_endpoints.auth.agent_permission_handler.AgentRequestHandler.resolve_agent_access",
                 new=AsyncMock(return_value=UnrestrictedAgentAccess()),
             ):
-                result = await get_agents(request=request_mock, user_api_key_dict=user)
+                result = await get_agents(
+                    request=request_mock,
+                    health_check=False,
+                    q=None,
+                    category=None,
+                    tag=None,
+                    supports_streaming=None,
+                    is_public=None,
+                    cursor=None,
+                    limit=50,
+                    user_api_key_dict=user,
+                )
     assert result == []
 
 

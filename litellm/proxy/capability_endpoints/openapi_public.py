@@ -31,7 +31,7 @@ Operation IDs are preserved verbatim so codegen output is stable.
 """
 
 from collections.abc import Mapping, Set
-from typing import Any
+from typing import Any, Final
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -162,16 +162,26 @@ def _filter_openapi(schema: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _collect_refs(node: Any, acc: set[str]) -> None:
-    """Recurse the node, recording `#/components/schemas/<Name>` refs."""
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if k == "$ref" and isinstance(v, str) and v.startswith("#/components/schemas/"):
-                acc.add(v.rsplit("/", 1)[-1])
-            else:
-                _collect_refs(v, acc)
-    elif isinstance(node, list):
-        for item in node:
-            _collect_refs(item, acc)
+    """Record `#/components/schemas/<Name>` refs without recursive traversal."""
+    pending: Final[list[object]] = [  # mutable-ok: iterative graph traversal needs a local work queue
+        node
+    ]
+    seen: Final[set[int]] = set()  # mutable-ok: cycle detection requires local visited state
+
+    while pending:
+        current = pending.pop()
+        if not isinstance(current, (dict, list)) or id(current) in seen:
+            continue
+        seen.add(id(current))
+
+        if isinstance(current, dict):
+            for key, value in current.items():
+                if key == "$ref" and isinstance(value, str) and value.startswith("#/components/schemas/"):
+                    acc.add(value.rsplit("/", 1)[-1])
+                else:
+                    pending.append(value)
+        else:
+            pending.extend(current)
 
 
 @router.get("/openapi-public.json", include_in_schema=False)
