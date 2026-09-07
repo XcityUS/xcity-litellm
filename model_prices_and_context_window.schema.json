@@ -382,6 +382,9 @@
             "video_generation"
           ]
         },
+        "notes": {
+          "type": "string"
+        },
         "ocr_cost_per_credit": {
           "type": "number",
           "minimum": 0
@@ -425,6 +428,18 @@
           "minimum": 0
         },
         "output_cost_per_second_1080p": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_second_480p": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_second_4k": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_second_720p": {
           "type": "number",
           "minimum": 0
         },
@@ -493,6 +508,38 @@
           "minimum": 0
         },
         "output_cost_per_video_token": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_1080p": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_1080p_with_video": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_480p": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_480p_with_video": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_4k": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_4k_with_video": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_720p": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_video_token_720p_with_video": {
           "type": "number",
           "minimum": 0
         },

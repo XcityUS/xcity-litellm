@@ -71,10 +71,7 @@ def test_filters_and_must_all_match():
     envelope = {"data": {"app_id": "xct-chat", "entity_type": "agent"}}
     assert _matches_filters({"app_id": "xct-chat"}, envelope) is True
     assert _matches_filters({"app_id": "xct-home"}, envelope) is False
-    assert (
-        _matches_filters({"app_id": "xct-chat", "entity_type": "model"}, envelope)
-        is False
-    )
+    assert _matches_filters({"app_id": "xct-chat", "entity_type": "model"}, envelope) is False
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +101,7 @@ async def test_dispatch_delivers_on_first_try_and_persists_success():
 
     with (
         patch("litellm.proxy.proxy_server.prisma_client", prisma),
-        patch.object(disp_mod.httpx, "AsyncClient", lambda **kw: _OKClient()),
+        patch.object(disp_mod, "get_async_httpx_client", lambda **kw: _OKClient()),
     ):
         result = await dispatch_to_subscription(
             subscription=sub,
@@ -114,9 +111,7 @@ async def test_dispatch_delivers_on_first_try_and_persists_success():
     assert result["delivered"] is True
     assert result["attempts"] == 1
     # Success path: update was called with last_success_at + reset failures
-    update_data = prisma.db.litellm_webhooksubscriptiontable.update.call_args.kwargs[
-        "data"
-    ]
+    update_data = prisma.db.litellm_webhooksubscriptiontable.update.call_args.kwargs["data"]
     assert update_data["consecutive_failures"] == 0
     assert "last_success_at" in update_data
     # Outgoing request: signed, JSON, with our headers.
@@ -132,9 +127,7 @@ async def test_dispatch_delivers_on_first_try_and_persists_success():
 @pytest.mark.asyncio
 async def test_dispatch_retries_then_dlqs_on_repeated_failure():
     prisma = _mock_prisma()
-    prisma.db.litellm_webhooksubscriptiontable.find_unique.return_value = (
-        _mock_subscription(consecutive_failures=5)
-    )
+    prisma.db.litellm_webhooksubscriptiontable.find_unique.return_value = _mock_subscription(consecutive_failures=5)
     sub = _mock_subscription(consecutive_failures=5)
 
     class _FailClient:
@@ -152,7 +145,7 @@ async def test_dispatch_retries_then_dlqs_on_repeated_failure():
 
     with (
         patch("litellm.proxy.proxy_server.prisma_client", prisma),
-        patch.object(disp_mod.httpx, "AsyncClient", lambda **kw: _FailClient()),
+        patch.object(disp_mod, "get_async_httpx_client", lambda **kw: _FailClient()),
     ):
         result = await dispatch_to_subscription(
             subscription=sub,
@@ -176,9 +169,7 @@ async def test_dispatch_retries_then_dlqs_on_repeated_failure():
 @pytest.mark.asyncio
 async def test_dispatch_auto_disables_after_threshold():
     prisma = _mock_prisma()
-    prisma.db.litellm_webhooksubscriptiontable.find_unique.return_value = (
-        _mock_subscription(consecutive_failures=19)
-    )
+    prisma.db.litellm_webhooksubscriptiontable.find_unique.return_value = _mock_subscription(consecutive_failures=19)
     sub = _mock_subscription(consecutive_failures=19)
 
     class _FailClient:
@@ -196,7 +187,7 @@ async def test_dispatch_auto_disables_after_threshold():
 
     with (
         patch("litellm.proxy.proxy_server.prisma_client", prisma),
-        patch.object(disp_mod.httpx, "AsyncClient", lambda **kw: _FailClient()),
+        patch.object(disp_mod, "get_async_httpx_client", lambda **kw: _FailClient()),
     ):
         await dispatch_to_subscription(
             subscription=sub,
@@ -220,9 +211,7 @@ async def test_emit_event_fans_out_to_active_subscribers():
     prisma = _mock_prisma()
     prisma.db.litellm_webhooksubscriptiontable.find_many.return_value = [
         _mock_subscription(subscription_id="a", filters=None),
-        _mock_subscription(
-            subscription_id="b", filters={"app_id": "xct-home"}
-        ),  # filter mismatch
+        _mock_subscription(subscription_id="b", filters={"app_id": "xct-home"}),  # filter mismatch
         _mock_subscription(subscription_id="c", filters={"app_id": "xct-chat"}),
     ]
     dispatched = []

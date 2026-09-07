@@ -2863,7 +2863,7 @@ async def user_api_key_auth(
         # Explicit header NEVER overrides a token-baked app_id — that would
         # let a leaked admin key impersonate any app's traffic.
         if not getattr(user_api_key_auth_obj, "app_id", None):
-            header_app_id = request.headers.get("x-xct-app-id")
+            header_app_id: Final = request.headers.get("x-xct-app-id") if "headers" in request.scope else None
             if header_app_id:
                 user_api_key_auth_obj.app_id = header_app_id
 

@@ -2382,6 +2382,24 @@
         "text_completion": false
       }
     },
+    "tencent_cloud": {
+      "display_name": "Tencent Cloud TokenHub (`tencent_cloud`)",
+      "url": "https://cloud.tencent.com/document/product/1772",
+      "endpoints": {
+        "chat_completions": true,
+        "messages": false,
+        "responses": false,
+        "embeddings": false,
+        "image_generations": false,
+        "audio_transcriptions": false,
+        "audio_speech": false,
+        "moderations": false,
+        "batches": false,
+        "rerank": false,
+        "a2a": false,
+        "text_completion": false
+      }
+    },
     "text-completion-codestral": {
       "display_name": "Text Completion Codestral (`text-completion-codestral`)",
       "url": "https://docs.litellm.ai/docs/providers/codestral",

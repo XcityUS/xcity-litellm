@@ -19,11 +19,7 @@ def _mock_schema():
                     "operationId": "chat_completions",
                     "requestBody": {
                         "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ChatCompletionRequest"
-                                }
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/ChatCompletionRequest"}}
                         }
                     },
                 }
@@ -31,12 +27,8 @@ def _mock_schema():
             "/v1/capabilities": {"get": {"operationId": "get_capabilities"}},
             "/v1/agents": {
                 "get": {"operationId": "list_agents"},
-                "post": {
-                    "operationId": "create_agent"
-                },  # admin-only — should be DROPPED
-                "delete": {
-                    "operationId": "delete_agent"
-                },  # admin-only — should be DROPPED
+                "post": {"operationId": "create_agent"},  # admin-only — should be DROPPED
+                "delete": {"operationId": "delete_agent"},  # admin-only — should be DROPPED
             },
             "/v1/xct-skills/{skill_id}": {
                 "get": {"operationId": "get_skill"},

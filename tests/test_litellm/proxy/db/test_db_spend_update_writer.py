@@ -1546,15 +1546,16 @@ async def test_commit_key_spend_updates_includes_last_active():
 
 
 @pytest.mark.asyncio
-async def test_update_database_creates_single_task():
+async def test_update_database_schedules_batched_update_once():
     """
-    Test that update_database() fires exactly 1 asyncio.create_task() call
-    (the batched task) instead of the previous 11.
+    Test that update_database() schedules the consolidated batch exactly once.
     """
     db_writer = DBSpendUpdateWriter()
 
     # Mock all helpers so nothing real runs
     db_writer._insert_spend_log_to_db = AsyncMock()
+    db_writer._enqueue_tool_usage_transaction = AsyncMock()
+    db_writer._enqueue_autorouter_turn_transaction = AsyncMock()
     db_writer._batch_database_updates = AsyncMock()
 
     with (
@@ -1562,9 +1563,7 @@ async def test_update_database_creates_single_task():
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
         patch("litellm.proxy.proxy_server.litellm_proxy_budget_name", "test-budget"),
-        patch(
-            "litellm.proxy.db.db_spend_update_writer.asyncio.create_task"
-        ) as mock_create_task,
+        patch.object(db_writer, "_enqueue_tool_registry_upsert"),
     ):
         await db_writer.update_database(
             token="test-token",
@@ -1579,8 +1578,7 @@ async def test_update_database_creates_single_task():
             kwargs={"model": "gpt-4", "custom_llm_provider": "openai"},
         )
 
-        # Exactly 1 create_task call (the batch), not 11
-        assert mock_create_task.call_count == 1
+        db_writer._batch_database_updates.assert_called_once()
 
 
 @pytest.mark.asyncio

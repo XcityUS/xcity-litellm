@@ -240,7 +240,12 @@ def video_generation_cost(
     if completion_tokens:
         token_rate = _video_token_rate(model_info, video_resolution, has_video_input)
         if token_rate is not None:
-            verbose_logger.debug(f"For model={model} - video token rate: {token_rate}; tokens: {completion_tokens}")
+            verbose_logger.debug(
+                "For model=%s - video token rate: %s; tokens: %s",
+                model,
+                token_rate,
+                completion_tokens,
+            )
             return token_rate * completion_tokens
 
     # Check for video-specific cost per second

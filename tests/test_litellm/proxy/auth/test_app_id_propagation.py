@@ -72,7 +72,9 @@ async def test_header_app_id_fills_in_when_token_app_id_absent():
             uak_mod, "get_request_route", lambda request: "/v1/chat/completions"
         ),
         patch.object(
-            uak_mod.RouteChecks, "should_call_route", lambda route, valid_token: None
+            uak_mod.RouteChecks,
+            "should_call_route",
+            lambda route, valid_token, request: None,
         ),
     ):
         result = await uak_mod.user_api_key_auth(
@@ -132,7 +134,9 @@ async def test_token_app_id_wins_over_header():
             uak_mod, "get_request_route", lambda request: "/v1/chat/completions"
         ),
         patch.object(
-            uak_mod.RouteChecks, "should_call_route", lambda route, valid_token: None
+            uak_mod.RouteChecks,
+            "should_call_route",
+            lambda route, valid_token, request: None,
         ),
     ):
         result = await uak_mod.user_api_key_auth(

@@ -27,9 +27,9 @@ import json
 from datetime import datetime
 from typing import Any
 
-import httpx
-
 from litellm._logging import verbose_proxy_logger
+from litellm.llms.custom_httpx.http_handler import get_async_httpx_client
+from litellm.types.llms.custom_http import httpxSpecialProvider
 
 _BACKOFF_SECONDS: list[int] = [1, 5, 30, 120, 600]
 _DELIVERY_TIMEOUT_SECONDS = 10.0
@@ -103,18 +103,24 @@ async def dispatch_to_subscription(
     delivered = False
     for attempt in range(1, max_attempts + 1):
         try:
-            async with httpx.AsyncClient(timeout=_DELIVERY_TIMEOUT_SECONDS, follow_redirects=False) as client:
-                resp = await client.post(
-                    target_url,
-                    content=body_bytes,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-XCT-Signature": signature,
-                        "X-XCT-Event": event_type,
-                        "X-XCT-Subscription-Id": sub_id,
-                        "X-XCT-Attempt": str(attempt),
-                    },
-                )
+            client = get_async_httpx_client(
+                llm_provider=httpxSpecialProvider.LoggingCallback,
+                params={  # mutable-ok: shared HTTP client factory requires a dict
+                    "timeout": _DELIVERY_TIMEOUT_SECONDS,
+                    "follow_redirects": False,
+                },
+            )
+            resp = await client.post(
+                target_url,
+                content=body_bytes,
+                headers={  # mutable-ok: HTTP handler requires a dict of request headers
+                    "Content-Type": "application/json",
+                    "X-XCT-Signature": signature,
+                    "X-XCT-Event": event_type,
+                    "X-XCT-Subscription-Id": sub_id,
+                    "X-XCT-Attempt": str(attempt),
+                },
+            )
             if 200 <= resp.status_code < 300:
                 delivered = True
                 break

@@ -1280,10 +1280,10 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[None, None]:
             )
 
             if xcity_wallet_billing_instance not in litellm.callbacks:
-                litellm.callbacks.append(xcity_wallet_billing_instance)
+                litellm.logging_callback_manager.add_litellm_callback(xcity_wallet_billing_instance)
                 verbose_proxy_logger.info("[xcity_wallet] KWH billing callback registered (env-gated)")
         except Exception as e:
-            verbose_proxy_logger.warning(f"[xcity_wallet] failed to register billing callback: {e}")
+            verbose_proxy_logger.warning("[xcity_wallet] failed to register billing callback: %s", e)
 
     # End of startup event
     yield

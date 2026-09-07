@@ -121,7 +121,7 @@ class TestBudgetReset:
         proxy_logging_obj = ProxyLogging(user_api_key_cache=None)
         proxy_logging_obj.budget_alerts = AsyncMock()
 
-        async def mock_get_current_spend(counter_key, fallback_spend):
+        async def mock_get_current_spend(counter_key, fallback_spend, max_budget):
             # Simulate spend that has reached the cap.
             if counter_key == "spend:key:hashed-free-token":
                 return 0.20
@@ -158,7 +158,7 @@ class TestBudgetReset:
         proxy_logging_obj = ProxyLogging(user_api_key_cache=None)
         proxy_logging_obj.budget_alerts = AsyncMock()
 
-        async def mock_get_current_spend_post_reset(counter_key, fallback_spend):
+        async def mock_get_current_spend_post_reset(counter_key, fallback_spend, max_budget):
             # Counter has been zeroed by the reset job.
             return 0.0
 
