@@ -36,11 +36,11 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
     PATH="/app/.venv/bin:${PATH}"
 
 # Stage 1 — install dependencies only.
-RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
-    --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
-    uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+COPY pyproject.toml uv.lock ./
+COPY enterprise/pyproject.toml enterprise/pyproject.toml
+COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/pyproject.toml
+
+RUN uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
         --extra proxy \
         --extra proxy-runtime \
         --extra extra_proxy \
