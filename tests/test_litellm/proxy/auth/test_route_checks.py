@@ -1523,6 +1523,21 @@ def test_videos_route_is_llm_api_route(route):
 @pytest.mark.parametrize(
     "route",
     [
+        "/v1/provider-assets/status",
+        "/v1/provider-assets/groups",
+        "/v1/provider-assets",
+        "/v1/provider-assets/asset-123",
+        "/v1/provider-assets/verification-sessions",
+        "/v1/provider-assets/verification-results",
+    ],
+)
+def test_provider_asset_routes_are_llm_api_routes(route):
+    assert RouteChecks.is_llm_api_route(route) is True
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
         "/containers",
         "/v1/containers",
         "/containers/container_123",
