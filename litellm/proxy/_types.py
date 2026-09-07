@@ -585,7 +585,7 @@ class LiteLLMRoutes(enum.Enum):
         + apply_guardrail_routes
         + mcp_inference_routes
         + litellm_native_routes
-        + list(provider_asset_routes)
+        + list(provider_asset_routes)  # mutable-ok: LiteLLMRoutes values are lists
         + list(agent_inference_routes)
         + model_info_routes
     )
