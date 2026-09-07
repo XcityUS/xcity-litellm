@@ -68,6 +68,7 @@ GATEWAY_PATH_PREFIXES: tuple[str, ...] = (
     "/rag/",
     "/v1/video",
     "/v1/videos",
+    "/v1/provider-assets",
     "/video/",
     "/videos",
     "/v1/search",

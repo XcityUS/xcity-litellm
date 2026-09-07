@@ -485,6 +485,15 @@ class LiteLLMRoutes(enum.Enum):
         "/v1/rag/query",
     ]
 
+    provider_asset_routes = [
+        "/v1/provider-assets",
+        "/v1/provider-assets/{asset_id}",
+        "/v1/provider-assets/status",
+        "/v1/provider-assets/groups",
+        "/v1/provider-assets/verification-sessions",
+        "/v1/provider-assets/verification-results",
+    ]
+
     anthropic_routes = [
         "/v1/messages",
         "/v1/messages/count_tokens",
@@ -576,6 +585,7 @@ class LiteLLMRoutes(enum.Enum):
         + apply_guardrail_routes
         + mcp_inference_routes
         + litellm_native_routes
+        + provider_asset_routes
         + list(agent_inference_routes)
         + model_info_routes
     )
