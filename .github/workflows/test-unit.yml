@@ -119,6 +119,7 @@ jobs:
               tests/test_litellm/vector_stores
               tests/test_litellm/videos
               tests/test_litellm/test_*.py
+              tests/gateway
             workers: 2
             reruns: 2
             timeout-minutes: 20
