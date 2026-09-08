@@ -103,6 +103,11 @@ def _user_id(auth: UserAPIKeyAuth) -> str:
 
 
 def _owner_tag(user_id: str) -> str:
+    digest: Final = hashlib.sha256(user_id.encode(), usedforsecurity=True).hexdigest()[:24]
+    return f"xcity:{digest}"
+
+
+def _legacy_owner_tag(user_id: str) -> str:
     return f"xcity:{user_id}"
 
 
@@ -113,12 +118,14 @@ def _group_slug(name: str) -> str:
 
 
 def _owned_group_name(user_id: str, slug: str) -> str:
-    return f"{_owner_tag(user_id)}:{slug}"
+    tag: Final = _owner_tag(user_id)
+    available: Final = 64 - len(tag) - 1
+    return f"{tag}:{slug[:available].rstrip('-')}"
 
 
 def _is_owned_group(name: str, user_id: str) -> bool:
-    tag: Final = _owner_tag(user_id)
-    return name == tag or name.startswith(f"{tag}:")
+    tags: Final = (_owner_tag(user_id), _legacy_owner_tag(user_id))
+    return any(name == tag or name.startswith(f"{tag}:") for tag in tags)
 
 
 async def _require_owned_group(client: BytePlusAssetClient, group_id: str, user_id: str) -> None:
