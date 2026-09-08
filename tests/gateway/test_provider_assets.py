@@ -16,6 +16,8 @@ from gateway.providers.byteplus_assets import (
 )
 from gateway.routes.provider_assets import (
     CreateAssetRequest,
+    _is_owned_group,
+    _owned_group_name,
     create_provider_asset,
     get_provider_asset,
 )
@@ -57,6 +59,19 @@ def test_signed_headers_match_known_byteplus_vector() -> None:
     assert headers["Authorization"].endswith(
         "Signature=e0ce75a786c716cb3db1e647236ec2d9cc37e410a7f54cf82cfa2b5ddf7e0b7d"
     )
+
+
+def test_owned_group_name_fits_byteplus_limit_for_long_user_id() -> None:
+    user_id: Final = "user-with-a-very-long-production-identifier-that-cannot-fit-in-an-asset-group-name"
+
+    name: Final = _owned_group_name(user_id, "reviewed-materials-with-an-equally-long-description")
+
+    assert len(name) <= 64
+    assert _is_owned_group(name, user_id)
+
+
+def test_legacy_owned_group_name_remains_recognized() -> None:
+    assert _is_owned_group("xcity:user-1:hero", "user-1")
 
 
 @pytest.mark.asyncio
