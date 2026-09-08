@@ -149,6 +149,19 @@ def _group_records(payload: Mapping[str, object]) -> tuple[Mapping[str, object],
     return tuple(record for item in items if (record := _record(item)) is not None)
 
 
+def _asset_records(payload: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
+    root: Final = _result_root(payload)
+    data: Final = _record(root.get("Data"))
+    names: Final = ("Assets", "AssetList", "Items", "List")
+    source: Final = next((_object_list(root.get(name)) for name in names if isinstance(root.get(name), list)), ())
+    nested: Final = next(
+        (_object_list(data.get(name)) for name in names if data and isinstance(data.get(name), list)),
+        (),
+    )
+    items: Final = source or nested
+    return tuple(record for item in items if (record := _record(item)) is not None)
+
+
 async def _list_groups(
     client: BytePlusAssetClient,
     group_type: AssetGroupType,
@@ -167,6 +180,37 @@ async def _list_groups(
     return await _list_groups(client, group_type, page + 1, groups)
 
 
+async def _list_assets(
+    client: BytePlusAssetClient,
+    group_ids: tuple[str, ...],
+    page: int = 1,
+    accumulated: tuple[Mapping[str, object], ...] = (),
+) -> tuple[Mapping[str, object], ...]:
+    payload: Final = await _payload(
+        client,
+        "ListAssets",
+        {
+            "Filter": {"GroupIds": group_ids},
+            "PageNumber": page,
+            "PageSize": GROUP_PAGE_SIZE,
+            "SortBy": "CreateTime",
+            "SortOrder": "Desc",
+        },
+    )
+    page_assets: Final = _asset_records(payload)
+    assets: Final = (*accumulated, *page_assets)
+    if len(page_assets) < GROUP_PAGE_SIZE or page >= MAX_GROUP_PAGES:
+        return assets
+    return await _list_assets(client, group_ids, page + 1, assets)
+
+
+def _asset_failure_reason(asset: Mapping[str, object]) -> str:
+    error: Final = _record(asset.get("Error"))
+    return _string_field(asset, "Reason", "Message", "ErrorMessage", "failureReason") or (
+        _string_field(error, "Message", "message") if error else ""
+    )
+
+
 def _allowed_asset_url(value: str) -> str:
     parsed: Final = urlparse(value.strip())
     allowed_hosts: Final = tuple(
@@ -177,6 +221,14 @@ def _allowed_asset_url(value: str) -> str:
     if parsed.scheme != "https" or not parsed.hostname or parsed.hostname.lower() not in allowed_hosts:
         raise HTTPException(status_code=400, detail="Asset URL must use HTTPS on an allowed Xcity media host")
     return value.strip()
+
+
+def _provider_download_url(value: str) -> str:
+    allowed: Final = _allowed_asset_url(value)
+    parsed: Final = urlparse(allowed)
+    if not parsed.path.startswith("/media/"):
+        return allowed
+    return parsed._replace(path=f"/download/{parsed.path.removeprefix('/media/')}").geturl()
 
 
 @router.get("/status")
@@ -284,6 +336,53 @@ async def create_provider_asset_group(
     return {"groupId": group_id, "slug": slug, "created": True}
 
 
+@router.get("")
+async def list_provider_assets(
+    type: Literal["liveness", "aigc", "all"] = Query(default="all"),
+    auth: UserAPIKeyAuth = Depends(user_api_key_auth),
+    client: BytePlusAssetClient = Depends(get_asset_client),
+):
+    requested_types: Final[tuple[AssetGroupType, ...]] = (
+        ("LivenessFace",) if type == "liveness" else ("AIGC",) if type == "aigc" else ("LivenessFace", "AIGC")
+    )
+    pages: Final = await asyncio.gather(*(_list_groups(client, group_type) for group_type in requested_types))
+    user_id: Final = _user_id(auth)
+    owned_groups: Final = tuple(
+        (
+            _string_field(group, "Id", "ID", "GroupId", "groupId", "AssetGroupId"),
+            "AIGC" if _string_field(group, "GroupType", "groupType") == "AIGC" else group_type,
+        )
+        for group_type, page in zip(requested_types, pages)
+        for group in page
+        if _string_field(group, "Id", "ID", "GroupId", "groupId", "AssetGroupId")
+        and _is_owned_group(_string_field(group, "Name", "name"), user_id)
+    )
+    group_types: Final = dict(owned_groups)
+    group_ids: Final = tuple(group_types)
+    if not group_ids:
+        return {"assets": ()}
+
+    records: Final = await _list_assets(client, group_ids)
+    assets: Final = tuple(
+        {
+            "assetId": asset_id,
+            "groupId": group_id,
+            "groupType": group_types[group_id],
+            "name": _string_field(asset, "Name", "name"),
+            "previewUrl": _string_field(asset, "URL", "Url", "url", "PreviewUrl", "previewUrl"),
+            "assetType": _string_field(asset, "AssetType", "assetType") or "Image",
+            "status": _string_field(asset, "Status", "status"),
+            "failureReason": _asset_failure_reason(asset),
+            "createdAt": _string_field(asset, "CreateTime", "createTime", "CreatedAt", "createdAt"),
+            "updatedAt": _string_field(asset, "UpdateTime", "updateTime", "UpdatedAt", "updatedAt"),
+        }
+        for asset in records
+        if (asset_id := _string_field(asset, "Id", "ID", "AssetId", "assetId"))
+        and (group_id := _string_field(asset, "GroupId", "groupId", "AssetGroupId")) in group_types
+    )
+    return {"assets": assets}
+
+
 @router.post("")
 async def create_provider_asset(
     request: CreateAssetRequest,
@@ -297,7 +396,7 @@ async def create_provider_asset(
         "CreateAsset",
         {
             "GroupId": request.group_id.strip(),
-            "URL": _allowed_asset_url(request.url),
+            "URL": _provider_download_url(request.url),
             "Name": request.name.strip(),
             "AssetType": request.asset_type,
         },
@@ -341,7 +440,9 @@ async def create_verification_session(
     callback: Final = urlparse(request.callback_url.strip())
     if callback.scheme not in ("http", "https") or not callback.netloc:
         raise HTTPException(status_code=400, detail="A valid callback URL is required")
-    payload: Final = await _payload(client, "CreateVisualValidateSession", {"CallbackURL": request.callback_url.strip()})
+    payload: Final = await _payload(
+        client, "CreateVisualValidateSession", {"CallbackURL": request.callback_url.strip()}
+    )
     root: Final = _result_root(payload)
     h5_link: Final = _string_field(root, "H5Link", "h5Link")
     byted_token: Final = _string_field(root, "BytedToken", "bytedToken")
