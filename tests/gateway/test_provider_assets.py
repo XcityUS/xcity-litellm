@@ -20,6 +20,7 @@ from gateway.routes.provider_assets import (
     _owned_group_name,
     create_provider_asset,
     get_provider_asset,
+    list_provider_assets,
 )
 from litellm.proxy._types import UserAPIKeyAuth
 
@@ -106,3 +107,69 @@ async def test_get_asset_rejects_another_users_group() -> None:
         await get_provider_asset("asset-1", auth(), client)
 
     assert caught.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_assets_returns_only_assets_from_owned_groups() -> None:
+    client: Final = StubAssetClient(
+        {
+            "ListAssetGroups": {
+                "Result": {
+                    "Items": [
+                        {"Id": "group-owned", "Name": _owned_group_name("user-1", "reviewed"), "GroupType": "AIGC"},
+                        {"Id": "group-foreign", "Name": _owned_group_name("user-2", "reviewed"), "GroupType": "AIGC"},
+                    ]
+                }
+            },
+            "ListAssets": {
+                "Result": {
+                    "Items": [
+                        {
+                            "Id": "asset-owned",
+                            "GroupId": "group-owned",
+                            "Name": "Hero",
+                            "URL": "https://provider.example/hero.png",
+                            "AssetType": "Image",
+                            "Status": "Active",
+                            "CreateTime": "2026-09-08T00:00:00Z",
+                        },
+                        {"Id": "asset-foreign", "GroupId": "group-foreign", "Status": "Active"},
+                    ]
+                }
+            },
+        }
+    )
+
+    result: Final = await list_provider_assets("aigc", auth(), client)
+
+    assert result == {
+        "assets": (
+            {
+                "assetId": "asset-owned",
+                "groupId": "group-owned",
+                "groupType": "AIGC",
+                "name": "Hero",
+                "previewUrl": "https://provider.example/hero.png",
+                "assetType": "Image",
+                "status": "Active",
+                "failureReason": "",
+                "createdAt": "2026-09-08T00:00:00Z",
+                "updatedAt": "",
+            },
+        )
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_assets_skips_provider_listing_without_owned_groups() -> None:
+    client: Final = StubAssetClient(
+        {
+            "ListAssetGroups": {
+                "Result": {"Items": [{"Id": "group-foreign", "Name": _owned_group_name("user-2", "reviewed")}]}
+            }
+        }
+    )
+
+    result: Final = await list_provider_assets("aigc", auth(), client)
+
+    assert result == {"assets": ()}
