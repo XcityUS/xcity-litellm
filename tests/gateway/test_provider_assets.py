@@ -20,6 +20,7 @@ from gateway.routes.provider_assets import (
     _is_owned_group,
     _owned_group_name,
     create_provider_asset,
+    delete_provider_asset_group,
     get_provider_asset,
     list_provider_assets,
 )
@@ -109,6 +110,33 @@ async def test_create_asset_returns_state_after_owner_check() -> None:
     result: Final = await create_provider_asset(request, auth(), client)
 
     assert result == {"assetId": "asset-1", "status": "Processing"}
+
+
+@pytest.mark.asyncio
+async def test_delete_group_checks_owner_before_provider_delete() -> None:
+    client: Final = StubAssetClient(
+        {
+            "GetAssetGroup": {"Result": {"Name": "xcity:user-1:hero"}},
+            "DeleteAssetGroup": {"Result": {}},
+        },
+        {"DeleteAssetGroup": {"Id": "group-1"}},
+    )
+
+    result: Final = await delete_provider_asset_group("group-1", auth(), client)
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_delete_group_rejects_another_users_group() -> None:
+    client: Final = StubAssetClient(
+        {"GetAssetGroup": {"Result": {"Name": "xcity:user-2:hero"}}}
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        await delete_provider_asset_group("group-1", auth(), client)
+
+    assert caught.value.status_code == 403
 
 
 @pytest.mark.asyncio

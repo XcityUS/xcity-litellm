@@ -347,6 +347,20 @@ async def create_provider_asset_group(
     return {"groupId": group_id, "slug": slug, "created": True}
 
 
+@router.delete("/groups/{group_id}")
+async def delete_provider_asset_group(
+    group_id: str,
+    auth: UserAPIKeyAuth = Depends(user_api_key_auth),
+    client: BytePlusAssetClient = Depends(get_asset_client),
+):
+    normalized_group_id: Final = group_id.strip()
+    if not normalized_group_id:
+        raise HTTPException(status_code=400, detail="Asset group ID is required")
+    await _require_owned_group(client, normalized_group_id, _user_id(auth))
+    await _payload(client, "DeleteAssetGroup", {"Id": normalized_group_id})
+    return {}
+
+
 @router.get("")
 async def list_provider_assets(
     type: Literal["liveness", "aigc", "all"] = Query(default="all"),
