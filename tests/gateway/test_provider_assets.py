@@ -153,7 +153,16 @@ async def test_list_assets_returns_only_assets_from_owned_groups() -> None:
                     ]
                 }
             },
-        }
+        },
+        {
+            "ListAssets": {
+                "Filter": {"GroupIds": ("group-owned",), "GroupType": "AIGC"},
+                "PageNumber": 1,
+                "PageSize": 100,
+                "SortBy": "CreateTime",
+                "SortOrder": "Desc",
+            }
+        },
     )
 
     result: Final = await list_provider_assets("aigc", auth(), client)
