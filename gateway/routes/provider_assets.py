@@ -183,6 +183,7 @@ async def _list_groups(
 async def _list_assets(
     client: BytePlusAssetClient,
     group_ids: tuple[str, ...],
+    group_type: AssetGroupType,
     page: int = 1,
     accumulated: tuple[Mapping[str, object], ...] = (),
 ) -> tuple[Mapping[str, object], ...]:
@@ -190,7 +191,7 @@ async def _list_assets(
         client,
         "ListAssets",
         {
-            "Filter": {"GroupIds": group_ids},
+            "Filter": {"GroupIds": group_ids, "GroupType": group_type},
             "PageNumber": page,
             "PageSize": GROUP_PAGE_SIZE,
             "SortBy": "CreateTime",
@@ -201,7 +202,7 @@ async def _list_assets(
     assets: Final = (*accumulated, *page_assets)
     if len(page_assets) < GROUP_PAGE_SIZE or page >= MAX_GROUP_PAGES:
         return assets
-    return await _list_assets(client, group_ids, page + 1, assets)
+    return await _list_assets(client, group_ids, group_type, page + 1, assets)
 
 
 def _asset_failure_reason(asset: Mapping[str, object]) -> str:
@@ -358,11 +359,18 @@ async def list_provider_assets(
         and _is_owned_group(_string_field(group, "Name", "name"), user_id)
     )
     group_types: Final = dict(owned_groups)
-    group_ids: Final = tuple(group_types)
-    if not group_ids:
+    group_queries: Final = tuple(
+        (group_type, tuple(group_id for group_id, current_type in owned_groups if current_type == group_type))
+        for group_type in requested_types
+        if any(current_type == group_type for _, current_type in owned_groups)
+    )
+    if not group_queries:
         return {"assets": ()}
 
-    records: Final = await _list_assets(client, group_ids)
+    pages_by_type: Final = await asyncio.gather(
+        *(_list_assets(client, group_ids, group_type) for group_type, group_ids in group_queries)
+    )
+    records: Final = tuple(asset for page in pages_by_type for asset in page)
     assets: Final = tuple(
         {
             "assetId": asset_id,
