@@ -23,6 +23,7 @@ AssetGroupType = Literal["LivenessFace", "AIGC"]
 AssetType = Literal["Image", "Video", "Audio"]
 GROUP_PAGE_SIZE: Final = 100
 MAX_GROUP_PAGES: Final = 10
+MAX_ASSET_NAME_LENGTH: Final = 64
 JSON_OBJECT: Final = TypeAdapter(dict[str, object])
 JSON_LIST: Final = TypeAdapter(list[object])
 
@@ -84,6 +85,15 @@ def _result_root(payload: Mapping[str, object]) -> Mapping[str, object]:
 def _string_field(record: Mapping[str, object], *names: str) -> str:
     values: Final = (record.get(name) for name in names)
     return next((value.strip() for value in values if isinstance(value, str) and value.strip()), "")
+
+
+def _provider_asset_name(name: str) -> str:
+    normalized: Final = name.strip()
+    if len(normalized) <= MAX_ASSET_NAME_LENGTH:
+        return normalized
+    digest: Final = hashlib.sha256(normalized.encode(), usedforsecurity=True).hexdigest()[:12]
+    prefix_length: Final = MAX_ASSET_NAME_LENGTH - len(digest) - 1
+    return f"{normalized[:prefix_length]}-{digest}"
 
 
 async def _payload(client: BytePlusAssetClient, action: str, body: Mapping[str, object]) -> Mapping[str, object]:
@@ -337,6 +347,20 @@ async def create_provider_asset_group(
     return {"groupId": group_id, "slug": slug, "created": True}
 
 
+@router.delete("/groups/{group_id}")
+async def delete_provider_asset_group(
+    group_id: str,
+    auth: UserAPIKeyAuth = Depends(user_api_key_auth),
+    client: BytePlusAssetClient = Depends(get_asset_client),
+):
+    normalized_group_id: Final = group_id.strip()
+    if not normalized_group_id:
+        raise HTTPException(status_code=400, detail="Asset group ID is required")
+    await _require_owned_group(client, normalized_group_id, _user_id(auth))
+    await _payload(client, "DeleteAssetGroup", {"Id": normalized_group_id})
+    return {}
+
+
 @router.get("")
 async def list_provider_assets(
     type: Literal["liveness", "aigc", "all"] = Query(default="all"),
@@ -405,7 +429,7 @@ async def create_provider_asset(
         {
             "GroupId": request.group_id.strip(),
             "URL": _provider_download_url(request.url),
-            "Name": request.name.strip(),
+            "Name": _provider_asset_name(request.name),
             "AssetType": request.asset_type,
         },
     )
