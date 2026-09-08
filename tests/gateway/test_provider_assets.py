@@ -26,10 +26,18 @@ from litellm.proxy._types import UserAPIKeyAuth
 
 
 class StubAssetClient(BytePlusAssetClient):
-    def __init__(self, responses: Mapping[str, Mapping[str, object]]) -> None:
+    def __init__(
+        self,
+        responses: Mapping[str, Mapping[str, object]],
+        expected_bodies: Mapping[str, Mapping[str, object]] | None = None,
+    ) -> None:
         self._responses: Final = responses
+        self._expected_bodies: Final = expected_bodies or {}
 
     async def call(self, action: str, body: Mapping[str, object]) -> ProviderResult:
+        expected: Final = self._expected_bodies.get(action)
+        if expected is not None and body != expected:
+            return ProviderFailure(status_code=500, message=f"Unexpected body for {action}: {body}")
         payload: Final = self._responses.get(action)
         if payload is None:
             return ProviderFailure(status_code=500, message=f"Unexpected action: {action}")
@@ -81,7 +89,15 @@ async def test_create_asset_returns_state_after_owner_check() -> None:
         {
             "GetAssetGroup": {"Result": {"Name": "xcity:user-1:hero"}},
             "CreateAsset": {"Result": {"AssetId": "asset-1"}},
-        }
+        },
+        {
+            "CreateAsset": {
+                "GroupId": "group-1",
+                "URL": "https://media.xcity.ai/download/u/user-1/hero.png",
+                "Name": "Hero",
+                "AssetType": "Image",
+            }
+        },
     )
     request: Final = CreateAssetRequest(
         groupId="group-1",

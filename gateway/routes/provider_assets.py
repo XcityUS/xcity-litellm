@@ -223,6 +223,14 @@ def _allowed_asset_url(value: str) -> str:
     return value.strip()
 
 
+def _provider_download_url(value: str) -> str:
+    allowed: Final = _allowed_asset_url(value)
+    parsed: Final = urlparse(allowed)
+    if not parsed.path.startswith("/media/"):
+        return allowed
+    return parsed._replace(path=f"/download/{parsed.path.removeprefix('/media/')}").geturl()
+
+
 @router.get("/status")
 async def provider_asset_status(
     _auth: UserAPIKeyAuth = Depends(user_api_key_auth),
@@ -388,7 +396,7 @@ async def create_provider_asset(
         "CreateAsset",
         {
             "GroupId": request.group_id.strip(),
-            "URL": _allowed_asset_url(request.url),
+            "URL": _provider_download_url(request.url),
             "Name": request.name.strip(),
             "AssetType": request.asset_type,
         },
