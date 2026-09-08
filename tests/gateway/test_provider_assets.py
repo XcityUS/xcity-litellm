@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from typing import Final
 
@@ -108,6 +109,40 @@ async def test_create_asset_returns_state_after_owner_check() -> None:
     result: Final = await create_provider_asset(request, auth(), client)
 
     assert result == {"assetId": "asset-1", "status": "Processing"}
+
+
+@pytest.mark.asyncio
+async def test_create_asset_shortens_name_to_byteplus_limit() -> None:
+    long_name: Final = "video_" + "a" * 70
+    digest: Final = hashlib.sha256(long_name.encode(), usedforsecurity=True).hexdigest()[:12]
+    expected_name: Final = f"{long_name[:51]}-{digest}"
+    client: Final = StubAssetClient(
+        {
+            "GetAssetGroup": {"Result": {"Name": "xcity:user-1:hero"}},
+            "CreateAsset": {"Result": {"AssetId": "asset-1"}},
+        },
+        {
+            "CreateAsset": {
+                "GroupId": "group-1",
+                "URL": "https://media.xcity.ai/download/u/user-1/video.mp4",
+                "Name": expected_name,
+                "AssetType": "Video",
+            }
+        },
+    )
+
+    await create_provider_asset(
+        CreateAssetRequest(
+            groupId="group-1",
+            url="https://media.xcity.ai/media/u/user-1/video.mp4",
+            name=long_name,
+            assetType="Video",
+        ),
+        auth(),
+        client,
+    )
+
+    assert len(expected_name) == 64
 
 
 @pytest.mark.asyncio

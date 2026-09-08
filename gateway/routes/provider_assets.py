@@ -23,6 +23,7 @@ AssetGroupType = Literal["LivenessFace", "AIGC"]
 AssetType = Literal["Image", "Video", "Audio"]
 GROUP_PAGE_SIZE: Final = 100
 MAX_GROUP_PAGES: Final = 10
+MAX_ASSET_NAME_LENGTH: Final = 64
 JSON_OBJECT: Final = TypeAdapter(dict[str, object])
 JSON_LIST: Final = TypeAdapter(list[object])
 
@@ -84,6 +85,15 @@ def _result_root(payload: Mapping[str, object]) -> Mapping[str, object]:
 def _string_field(record: Mapping[str, object], *names: str) -> str:
     values: Final = (record.get(name) for name in names)
     return next((value.strip() for value in values if isinstance(value, str) and value.strip()), "")
+
+
+def _provider_asset_name(name: str) -> str:
+    normalized: Final = name.strip()
+    if len(normalized) <= MAX_ASSET_NAME_LENGTH:
+        return normalized
+    digest: Final = hashlib.sha256(normalized.encode(), usedforsecurity=True).hexdigest()[:12]
+    prefix_length: Final = MAX_ASSET_NAME_LENGTH - len(digest) - 1
+    return f"{normalized[:prefix_length]}-{digest}"
 
 
 async def _payload(client: BytePlusAssetClient, action: str, body: Mapping[str, object]) -> Mapping[str, object]:
@@ -405,7 +415,7 @@ async def create_provider_asset(
         {
             "GroupId": request.group_id.strip(),
             "URL": _provider_download_url(request.url),
-            "Name": request.name.strip(),
+            "Name": _provider_asset_name(request.name),
             "AssetType": request.asset_type,
         },
     )
