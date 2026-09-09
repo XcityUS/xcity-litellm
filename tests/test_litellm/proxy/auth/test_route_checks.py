@@ -1525,6 +1525,7 @@ def test_videos_route_is_llm_api_route(route):
     [
         "/v1/provider-assets/status",
         "/v1/provider-assets/groups",
+        "/v1/provider-assets/groups/group-123",
         "/v1/provider-assets",
         "/v1/provider-assets/asset-123",
         "/v1/provider-assets/verification-sessions",
