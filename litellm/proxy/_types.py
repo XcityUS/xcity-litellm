@@ -490,6 +490,7 @@ class LiteLLMRoutes(enum.Enum):
         "/v1/provider-assets/{asset_id}",
         "/v1/provider-assets/status",
         "/v1/provider-assets/groups",
+        "/v1/provider-assets/groups/{group_id}",
         "/v1/provider-assets/verification-sessions",
         "/v1/provider-assets/verification-results",
     )
