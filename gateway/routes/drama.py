@@ -12,7 +12,18 @@ from litellm.proxy.auth.user_api_key_auth import UserAPIKeyAuth, user_api_key_au
 
 router: Final = APIRouter(prefix="/v1/drama", tags=["drama"])
 JSON_OBJECT: Final = TypeAdapter(dict[str, object])
-SourceLanguage = Literal["zh-CN", "zh-TW", "en-US"]
+SourceLanguage = Literal[
+    "en-US",
+    "zh-CN",
+    "ja-JP",
+    "ko-KR",
+    "es-ES",
+    "fr-FR",
+    "de-DE",
+    "pt-BR",
+    "it-IT",
+    "ar-SA",
+]
 Presence = Literal["on_screen", "voice_over", "narrator", "mentioned"]
 MAX_SCRIPT_CHARACTERS: Final = 120_000
 DEFAULT_MODEL: Final = "deepseek-v4-pro-260425"

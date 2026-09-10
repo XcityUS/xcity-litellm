@@ -11,6 +11,14 @@ def test_breakdown_request_rejects_empty_script() -> None:
         BreakdownRequest.model_validate({"script": "", "sourceLanguage": "zh-CN"})
 
 
+@pytest.mark.parametrize(
+    "language", ["en-US", "zh-CN", "ja-JP", "ko-KR", "es-ES", "fr-FR", "de-DE", "pt-BR", "it-IT", "ar-SA"]
+)
+def test_breakdown_request_accepts_studio_languages(language: str) -> None:
+    request: Final = BreakdownRequest.model_validate({"script": "Scene one", "sourceLanguage": language})
+    assert request.source_language == language
+
+
 def test_analysis_requires_linkable_structured_shots() -> None:
     payload: Final = {
         "version": 1,
