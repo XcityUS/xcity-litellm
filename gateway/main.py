@@ -28,9 +28,11 @@ from gateway.routes.allowlist import (
     GATEWAY_MOUNT_PATHS,
     GATEWAY_PATH_PREFIXES,
 )
+from gateway.routes.drama import router as drama_router
 from gateway.routes.provider_assets import router as provider_assets_router
 from litellm.proxy.proxy_server import app
 
+app.include_router(drama_router)
 app.include_router(provider_assets_router)
 
 
