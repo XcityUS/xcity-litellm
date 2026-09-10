@@ -353,7 +353,8 @@
         "output_cost_per_token": 1.4e-07,
         "supports_function_calling": true,
         "supports_prompt_caching": true,
-        "supports_response_schema": true
+        "supports_response_schema": true,
+        "supports_tool_choice": true
     },
     "amazon-nova/nova-premier-v1": {
         "input_cost_per_token": 2.5e-06,
@@ -468,7 +469,8 @@
         "output_cost_per_token": 1.4e-07,
         "supports_function_calling": true,
         "supports_prompt_caching": true,
-        "supports_response_schema": true
+        "supports_response_schema": true,
+        "supports_tool_choice": true
     },
     "amazon.nova-pro-v1:0": {
         "input_cost_per_token": 8e-07,
@@ -1418,7 +1420,8 @@
         "output_cost_per_token": 1.48e-07,
         "supports_function_calling": true,
         "supports_prompt_caching": true,
-        "supports_response_schema": true
+        "supports_response_schema": true,
+        "supports_tool_choice": true
     },
     "apac.amazon.nova-pro-v1:0": {
         "input_cost_per_token": 8.4e-07,
@@ -17387,7 +17390,8 @@
         "output_cost_per_token": 1.84e-07,
         "supports_function_calling": true,
         "supports_prompt_caching": true,
-        "supports_response_schema": true
+        "supports_response_schema": true,
+        "supports_tool_choice": true
     },
     "eu.amazon.nova-pro-v1:0": {
         "input_cost_per_token": 1.05e-06,
@@ -44702,7 +44706,8 @@
         "output_cost_per_token": 1.4e-07,
         "supports_function_calling": true,
         "supports_prompt_caching": true,
-        "supports_response_schema": true
+        "supports_response_schema": true,
+        "supports_tool_choice": true
     },
     "us.amazon.nova-premier-v1:0": {
         "deprecation_date": "2026-09-14",

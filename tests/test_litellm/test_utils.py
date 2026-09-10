@@ -1306,17 +1306,17 @@ def test_supports_tool_choice_simple_tests():
     )
 
     assert (
-        litellm.utils.supports_tool_choice(model="us.amazon.nova-micro-v1:0") is False
+        litellm.utils.supports_tool_choice(model="us.amazon.nova-micro-v1:0") is True
     )
     assert (
         litellm.utils.supports_tool_choice(model="bedrock/us.amazon.nova-micro-v1:0")
-        is False
+        is True
     )
     assert (
         litellm.utils.supports_tool_choice(
             model="us.amazon.nova-micro-v1:0", custom_llm_provider="bedrock_converse"
         )
-        is False
+        is True
     )
 
     assert litellm.utils.supports_tool_choice(model="perplexity/sonar") is False
