@@ -56,8 +56,8 @@ litellm/proxy/tests/package-lock.json
 ui/litellm-dashboard/.next
 ui/litellm-dashboard/node_modules
 ui/litellm-dashboard/next-env.d.ts
-ui/litellm-dashboard/package.json
-ui/litellm-dashboard/package-lock.json
+# ui/litellm-dashboard/package.json — tracked; do not gitignore
+# ui/litellm-dashboard/package-lock.json — tracked; do not gitignore
 helm/litellm-helm/*.tgz
 helm/*.tgz
 litellm/proxy/vertex_key.json
