@@ -302,6 +302,7 @@ async def list_provider_asset_groups(
         {
             "id": _string_field(group, "Id", "ID", "GroupId", "groupId", "AssetGroupId"),
             "name": _string_field(group, "Name", "name"),
+            "displayName": _string_field(group, "Description", "description"),
             "groupType": "AIGC" if _string_field(group, "GroupType", "groupType") == "AIGC" else group_type,
         }
         for group_type, page in zip(requested_types, pages)

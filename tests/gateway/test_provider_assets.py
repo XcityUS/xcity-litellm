@@ -22,6 +22,7 @@ from gateway.routes.provider_assets import (
     create_provider_asset,
     delete_provider_asset_group,
     get_provider_asset,
+    list_provider_asset_groups,
     list_provider_assets,
 )
 from litellm.proxy._types import UserAPIKeyAuth
@@ -86,6 +87,45 @@ def test_legacy_owned_group_name_remains_recognized() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_groups_preserves_the_project_title_as_display_name() -> None:
+    client: Final = StubAssetClient(
+        {
+            "ListAssetGroups": {
+                "Result": {
+                    "Items": [
+                        {
+                            "Id": "group-project",
+                            "Name": _owned_group_name("user-1", "character-1234567890"),
+                            "Description": "我的短剧项目",
+                            "GroupType": "AIGC",
+                        },
+                        {
+                            "Id": "group-foreign",
+                            "Name": _owned_group_name("user-2", "other-project"),
+                            "Description": "其他项目",
+                            "GroupType": "AIGC",
+                        },
+                    ]
+                }
+            }
+        }
+    )
+
+    result: Final = await list_provider_asset_groups("aigc", auth(), client)
+
+    assert result == {
+        "groups": (
+            {
+                "id": "group-project",
+                "name": _owned_group_name("user-1", "character-1234567890"),
+                "displayName": "我的短剧项目",
+                "groupType": "AIGC",
+            },
+        )
+    }
+
+
+@pytest.mark.asyncio
 async def test_create_asset_returns_state_after_owner_check() -> None:
     client: Final = StubAssetClient(
         {
@@ -129,9 +169,7 @@ async def test_delete_group_checks_owner_before_provider_delete() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_group_rejects_another_users_group() -> None:
-    client: Final = StubAssetClient(
-        {"GetAssetGroup": {"Result": {"Name": "xcity:user-2:hero"}}}
-    )
+    client: Final = StubAssetClient({"GetAssetGroup": {"Result": {"Name": "xcity:user-2:hero"}}})
 
     with pytest.raises(HTTPException) as caught:
         await delete_provider_asset_group("group-1", auth(), client)
