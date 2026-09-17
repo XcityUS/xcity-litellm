@@ -11,6 +11,7 @@
 -- Indexes targeted at the dashboard "by-app" + "by-entity" queries that
 -- S6-02 / S6-03 will execute.
 
+-- data-migration-ok: constant DEFAULT is catalog-only on Postgres 11+ (production runs 16), no row is rewritten
 ALTER TABLE "LiteLLM_SpendLogs"
   ADD COLUMN IF NOT EXISTS "skill_ids"       TEXT[] NOT NULL DEFAULT '{}'::text[],
   ADD COLUMN IF NOT EXISTS "app_id"          TEXT,

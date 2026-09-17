@@ -99,11 +99,11 @@ def create_config_class(provider: SimpleProviderConfig):
             return api_base
 
         def get_supported_openai_params(self, model: str) -> list:
-            from litellm.utils import _is_explicitly_disabled_factory, supports_reasoning
+            from litellm.utils import is_explicitly_disabled_factory, supports_reasoning
 
             supported_params: Final = super().get_supported_openai_params(model=model)
 
-            tools_disabled: Final = _is_explicitly_disabled_factory(
+            tools_disabled: Final = is_explicitly_disabled_factory(
                 model=model, custom_llm_provider=provider.slug, key="supports_function_calling"
             )
             filtered_params: Final = tuple(
