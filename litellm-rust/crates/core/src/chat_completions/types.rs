@@ -22,6 +22,17 @@ pub struct ChatCompletionsRequest<'a> {
     pub timeout: Option<Duration>,
 }
 
+pub(super) struct ResolvedChatCompletionsRequest<'a> {
+    pub(super) model: String,
+    pub(super) config: &'static dyn ChatCompletionsProviderConfig,
+    pub(super) messages: Vec<ChatMessage>,
+    pub(super) optional_params: Map<String, Value>,
+    pub(super) api_key: Option<&'a str>,
+    pub(super) api_base: Option<&'a str>,
+    pub(super) extra_headers: Option<Map<String, Value>>,
+    pub(super) timeout: Option<Duration>,
+}
+
 pub(super) struct ProviderChatCompletionsRequest {
     pub(super) model: String,
     pub(super) config: &'static dyn ChatCompletionsProviderConfig,
@@ -29,7 +40,6 @@ pub(super) struct ProviderChatCompletionsRequest {
     pub(super) body: Value,
     pub(super) upstream_headers: Vec<(String, String)>,
     pub(super) auth: ChatCompletionsAuth,
-    #[cfg_attr(not(feature = "bedrock-auth"), allow(dead_code))]
     pub(super) optional_params: Map<String, Value>,
     pub(super) timeout: Option<Duration>,
 }

@@ -3,7 +3,7 @@ import { useDisableBouncingIcon } from "@/app/(dashboard)/hooks/useDisableBounci
 import { useDisableShowPrompts } from "@/app/(dashboard)/hooks/useDisableShowPrompts";
 import { useWorker } from "@/hooks/useWorker";
 import { getProxyBaseUrl } from "@/components/networking";
-import { migratedHref } from "@/utils/migratedPages";
+import { uiHref } from "@/utils/uiHref";
 import { useTheme } from "@/contexts/ThemeContext";
 import { clearTokenCookies } from "@/utils/cookieUtils";
 import { clearStoredReturnUrl, getLoginUrl } from "@/utils/returnUrlUtils";
@@ -66,7 +66,7 @@ const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <nav className="sticky top-0 z-10 border-b border-border bg-card">
+    <nav className="sticky top-0 z-chrome border-b border-border bg-card">
       <div className="w-full">
         <div className="flex h-14 items-center px-4">
           <div className="flex shrink-0 items-center">
@@ -87,7 +87,7 @@ const Navbar: React.FC<NavbarProps> = ({
             )}
 
             <div className="flex items-center gap-2">
-              <Link href={migratedHref("")} className="flex items-center">
+              <Link href={uiHref("")} className="flex items-center">
                 <div className="relative">
                   <div className="flex h-10 max-w-48 items-center justify-center overflow-hidden">
                     <img src={imageUrl} alt="LiteLLM Brand" className={cn(NAV_LOGO_CLASS_NAME, "dark:hidden")} />
@@ -111,7 +111,7 @@ const Navbar: React.FC<NavbarProps> = ({
                       🌑
                     </span>
                   )}
-                  <Badge variant="outline" className="relative z-10 cursor-pointer text-xs font-medium">
+                  <Badge variant="outline" className="relative z-raised cursor-pointer text-xs font-medium">
                     <a
                       href="https://docs.litellm.ai/release_notes"
                       target="_blank"

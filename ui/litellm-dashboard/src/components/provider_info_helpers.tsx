@@ -20,6 +20,7 @@ import falAiLogo from "../../public/assets/logos/fal_ai.jpg";
 import featherlessLogo from "../../public/assets/logos/featherless.svg";
 import fireworksLogo from "../../public/assets/logos/fireworks.svg";
 import friendliLogo from "../../public/assets/logos/friendli.svg";
+import gigachatLogo from "../../public/assets/logos/gigachat.svg";
 import githubCopilotLogo from "../../public/assets/logos/github_copilot.svg";
 import googleLogo from "../../public/assets/logos/google.svg";
 import groqLogo from "../../public/assets/logos/groq.svg";
@@ -83,6 +84,7 @@ export enum Providers {
   BASETEN = "Baseten",
   BYTEZ = "Bytez",
   Cerebras = "Cerebras",
+  CHATGPT = "ChatGPT Subscription",
   CLARIFAI = "Clarifai",
   CLOUDFLARE = "Cloudflare",
   CODESTRAL = "Codestral",
@@ -107,6 +109,7 @@ export enum Providers {
   FireworksAI = "Fireworks AI",
   FRIENDLIAI = "Friendliai",
   GALADRIEL = "Galadriel",
+  GIGACHAT = "GigaChat",
   GITHUB_COPILOT = "Github Copilot",
   Google_AI_Studio = "Google AI Studio",
   GradientAI = "GradientAI",
@@ -148,6 +151,8 @@ export enum Providers {
   PETALS = "Petals",
   PG_VECTOR = "Pg Vector",
   PREDIBASE = "Predibase",
+  Qwen_AI_Platform = "Qwen AI Platform",
+  QwenCloud = "QwenCloud",
   RECRAFT = "Recraft",
   REPLICATE = "Replicate",
   RunwayML = "RunwayML",
@@ -195,6 +200,7 @@ export const provider_map: Record<string, string> = {
   BedrockMantle: "bedrock_mantle",
   BYTEZ: "bytez",
   Cerebras: "cerebras",
+  CHATGPT: "chatgpt",
   CLARIFAI: "clarifai",
   CLOUDFLARE: "cloudflare",
   CODESTRAL: "codestral",
@@ -219,6 +225,7 @@ export const provider_map: Record<string, string> = {
   FireworksAI: "fireworks_ai",
   FRIENDLIAI: "friendliai",
   GALADRIEL: "galadriel",
+  GIGACHAT: "gigachat",
   GITHUB_COPILOT: "github_copilot",
   Google_AI_Studio: "gemini",
   GradientAI: "gradient_ai",
@@ -260,6 +267,8 @@ export const provider_map: Record<string, string> = {
   PETALS: "petals",
   PG_VECTOR: "pg_vector",
   PREDIBASE: "predibase",
+  Qwen_AI_Platform: "qwen_ai_platform",
+  QwenCloud: "qwencloud",
   RECRAFT: "recraft",
   REPLICATE: "replicate",
   RunwayML: "runwayml",
@@ -309,6 +318,7 @@ export const providerLogoMap: Partial<Record<Providers, string>> = {
   [Providers.BedrockMantle]: bedrockLogo.src,
   [Providers.SageMaker]: bedrockLogo.src,
   [Providers.Cerebras]: cerebrasLogo.src,
+  [Providers.CHATGPT]: openaiSmallLogo.src,
   [Providers.CLOUDFLARE]: cloudflareLogo.src,
   [Providers.CODESTRAL]: mistralLogo.src,
   [Providers.Cohere]: cohereLogo.src,
@@ -325,6 +335,7 @@ export const providerLogoMap: Partial<Record<Providers, string>> = {
   [Providers.FEATHERLESS_AI]: featherlessLogo.src,
   [Providers.FireworksAI]: fireworksLogo.src,
   [Providers.FRIENDLIAI]: friendliLogo.src,
+  [Providers.GIGACHAT]: gigachatLogo.src,
   [Providers.GITHUB_COPILOT]: githubCopilotLogo.src,
   [Providers.Google_AI_Studio]: googleLogo.src,
   [Providers.Groq]: groqLogo.src,
@@ -355,6 +366,8 @@ export const providerLogoMap: Partial<Record<Providers, string>> = {
   [Providers.Openrouter]: openrouterLogo.src,
   [Providers.Oracle]: oracleLogo.src,
   [Providers.Perplexity]: perplexityAiLogo.src,
+  [Providers.Qwen_AI_Platform]: qwenLogo.src,
+  [Providers.QwenCloud]: qwenLogo.src,
   [Providers.RECRAFT]: recraftLogo.src,
   [Providers.REPLICATE]: replicateLogo.src,
   [Providers.RunwayML]: runwayLogo.src,
@@ -416,6 +429,7 @@ const providerPlaceholderMap: Partial<Record<Providers, string>> = {
   [Providers.Azure]: "my-deployment",
   [Providers.Azure_AI_Studio]: "azure_ai/command-r-plus",
   [Providers.Bedrock]: "claude-3-opus",
+  [Providers.CHATGPT]: "chatgpt/gpt-5.4",
   [Providers.Cognition]: "cognition/swe-1.7",
   [Providers.Cursor]: "cursor/claude-4-sonnet",
   [Providers.DeepInfra]: "deepinfra/<any-model-on-deepinfra>",
@@ -440,7 +454,7 @@ export const getPlaceholder = (selectedProvider: string): string => {
   return providerPlaceholderMap[resolvedProvider] ?? "gpt-3.5-turbo";
 };
 
-export const getProviderModels = (provider: Providers, modelMap: any): Array<string> => {
+export const getProviderModels = (provider: string, modelMap: any): Array<string> => {
   let providerKey = provider;
   let custom_llm_provider = provider_map[providerKey];
 

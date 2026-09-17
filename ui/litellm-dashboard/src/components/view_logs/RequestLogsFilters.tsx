@@ -31,6 +31,12 @@ const STATUS_FILTER_ITEMS = [
   { value: "success", label: "Success" },
   { value: "failure", label: "Failure" },
 ] as const;
+
+const CACHE_FILTER_ITEMS = [
+  { value: ALL_VALUE, label: "All Requests" },
+  { value: "hit", label: "Cache Hit" },
+  { value: "miss", label: "Cache Miss" },
+] as const;
 const PAGE_SIZE = 50;
 
 const SEARCH_INPUT_REASONS: ReadonlySet<string> = new Set(["input-change", "input-clear", "clear-press"]);
@@ -62,7 +68,7 @@ function TeamFilterField({
       <SearchSelect
         options={options}
         value={value}
-        onValueChange={(next) => onChange(emptyToUndefined(next))}
+        onValueChange={(next) => onChange(next ?? undefined)}
         placeholder="Search or select a team"
         emptyText="No teams found"
       />
@@ -102,7 +108,7 @@ function KeyAliasFilterField({
       <PaginatedSearchSelect
         options={options}
         value={value}
-        onValueChange={(next) => onChange(emptyToUndefined(next))}
+        onValueChange={(next) => onChange(next ?? undefined)}
         onSearchChange={setSearch}
         onLoadMore={() => void fetchNextPage()}
         hasNextPage={hasNextPage}
@@ -140,7 +146,7 @@ function ModelFilterField({ value, onChange }: { value: string; onChange: (value
       <PaginatedSearchSelect
         options={options}
         value={value}
-        onValueChange={(next) => onChange(emptyToUndefined(next))}
+        onValueChange={(next) => onChange(next ?? undefined)}
         onSearchChange={setSearch}
         onLoadMore={() => void fetchNextPage()}
         hasNextPage={hasNextPage}
@@ -185,7 +191,7 @@ function UserIdFilterField({
       <PaginatedSearchSelect
         options={options}
         value={value}
-        onValueChange={(next) => onChange(emptyToUndefined(next))}
+        onValueChange={(next) => onChange(next ?? undefined)}
         onSearchChange={setSearch}
         onLoadMore={() => void fetchNextPage()}
         hasNextPage={hasNextPage}
@@ -230,7 +236,7 @@ function EndUserFilterField({
       <PaginatedSearchSelect
         options={options}
         value={value}
-        onValueChange={(next) => onChange(emptyToUndefined(next))}
+        onValueChange={(next) => onChange(next ?? undefined)}
         onSearchChange={setSearch}
         onLoadMore={() => void fetchNextPage()}
         hasNextPage={hasNextPage}
@@ -333,6 +339,27 @@ export function RequestLogsFilters({ get, set, teams, logsWindow }: RequestLogsF
           </SelectTrigger>
           <SelectContent>
             {STATUS_FILTER_ITEMS.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </DataTableFilterField>
+
+      <DataTableFilterField label="Cache">
+        <Select
+          items={CACHE_FILTER_ITEMS}
+          value={valueOf(LOG_FILTER_IDS.CACHE_STATUS) === "" ? ALL_VALUE : valueOf(LOG_FILTER_IDS.CACHE_STATUS)}
+          onValueChange={(next) =>
+            set(LOG_FILTER_IDS.CACHE_STATUS, next === null || next === ALL_VALUE ? undefined : next)
+          }
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="All Requests" />
+          </SelectTrigger>
+          <SelectContent>
+            {CACHE_FILTER_ITEMS.map((item) => (
               <SelectItem key={item.value} value={item.value}>
                 {item.label}
               </SelectItem>
