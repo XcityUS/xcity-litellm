@@ -236,3 +236,24 @@ def test_every_app_mount_is_assigned_to_a_component():
         f"Add them to GATEWAY_MOUNT_PATHS, BACKEND_MOUNT_PATHS, or serve them "
         f"from the UI container:\n  " + "\n  ".join(sorted(unassigned))
     )
+
+
+class TestSelectRoutes:
+    def test_the_trimmed_gateway_keeps_only_allowlisted_routes(self):
+        from starlette.routing import Route
+
+        from gateway.routes.allowlist import select_routes
+
+        chat = Route("/v1/chat/completions", endpoint=lambda request: None)
+        ui = Route("/ui", endpoint=lambda request: None)
+        kept = select_routes((chat, ui), lambda route: route is chat, serve_full_proxy=False)
+        assert kept == (chat,)
+
+    def test_full_proxy_mode_keeps_every_route_in_order(self):
+        from starlette.routing import Route
+
+        from gateway.routes.allowlist import select_routes
+
+        chat = Route("/v1/chat/completions", endpoint=lambda request: None)
+        ui = Route("/ui", endpoint=lambda request: None)
+        assert select_routes((ui, chat), lambda route: False, serve_full_proxy=True) == (ui, chat)

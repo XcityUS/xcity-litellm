@@ -9,6 +9,7 @@ Run with:
     uvicorn gateway.main:app --host 0.0.0.0 --port 4000
 """
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi.routing import Mount
@@ -27,9 +28,11 @@ from gateway.routes.allowlist import (
     GATEWAY_EXACT_PATHS,
     GATEWAY_MOUNT_PATHS,
     GATEWAY_PATH_PREFIXES,
+    select_routes,
 )
 from gateway.routes.drama import router as drama_router
 from gateway.routes.provider_assets import router as provider_assets_router
+from gateway.settings import GatewaySettings
 from litellm.proxy.proxy_server import app
 
 app.include_router(drama_router)
@@ -64,7 +67,8 @@ _proxy_lifespan = app.router.lifespan_context
 @asynccontextmanager
 async def _gateway_lifespan(app_):
     async with _proxy_lifespan(app_):
-        app_.router.routes = [r for r in app_.router.routes if _is_gateway_route(r)]
+        mode = GatewaySettings.from_env(os.environ)
+        app_.router.routes = list(select_routes(app_.router.routes, _is_gateway_route, mode.serve_full_proxy))
         yield
 
 
