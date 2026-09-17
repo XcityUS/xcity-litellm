@@ -176,6 +176,7 @@ describe("provider_info_helpers", () => {
         Providers.PETALS,
         Providers.PG_VECTOR,
         Providers.PREDIBASE,
+        Providers.TencentCloud,
         Providers.WANDB,
         Providers.ZAI,
       ];
