@@ -15,6 +15,10 @@ match management routes like `/v1/access_group`, `/v1/tool/{tool_name}/logs`,
 `/v2/key/info`, etc.
 """
 
+from collections.abc import Callable, Sequence
+
+from starlette.routing import BaseRoute
+
 GATEWAY_PATH_PREFIXES: tuple[str, ...] = (
     # OpenAI-compatible data-plane surface (versioned + unversioned)
     "/v1/chat/",
@@ -138,3 +142,11 @@ GATEWAY_MOUNT_PATHS: frozenset[str] = frozenset(
         "/metrics",
     }
 )
+
+
+def select_routes(
+    routes: Sequence[BaseRoute], is_gateway_route: Callable[[BaseRoute], bool], serve_full_proxy: bool
+) -> tuple[BaseRoute, ...]:
+    if serve_full_proxy:
+        return tuple(routes)
+    return tuple(route for route in routes if is_gateway_route(route))

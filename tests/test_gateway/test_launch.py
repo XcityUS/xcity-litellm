@@ -13,7 +13,8 @@ from uvicorn.importer import import_from_string
 from uvicorn.main import main as uvicorn_main
 
 import gateway.main
-from gateway.launch import GATEWAY_APP, main, pool_database_url, uvicorn_argv
+from gateway.launch import GATEWAY_APP, apply_migrations, main, pool_database_url, uvicorn_argv
+from gateway.settings import FULL_PROXY_ENV_VAR, GatewaySettings
 from litellm.proxy.db.db_url_settings import DatabaseURLSettings
 from litellm.proxy.db.pgbouncer import PGBOUNCER_POOLED_ENV_VAR, PgBouncerError, PgBouncerSettings
 
@@ -200,3 +201,78 @@ class TestMain:
             main(("--workers", "4"), serve=lambda argv: served.append(tuple(argv)))
         assert "missing-pgbouncer" in str(stopped.value)
         assert served == []
+
+
+class TestApplyMigrations:
+    def test_the_trimmed_gateway_never_migrates(self):
+        calls: Final[list[str]] = []
+        outcome: Final = apply_migrations(
+            GatewaySettings(serve_full_proxy=False),
+            {"DATABASE_URL": "postgresql://x"},
+            lambda: calls.append("m") or True,
+        )
+        assert outcome is None
+        assert calls == []
+
+    def test_full_proxy_mode_without_a_database_skips_migrations(self):
+        calls: Final[list[str]] = []
+        assert apply_migrations(GatewaySettings(serve_full_proxy=True), {}, lambda: calls.append("m") or True) is None
+        assert calls == []
+
+    def test_full_proxy_mode_migrates_and_stays_quiet_on_success(self):
+        calls: Final[list[str]] = []
+        outcome: Final = apply_migrations(
+            GatewaySettings(serve_full_proxy=True),
+            {"DATABASE_URL": "postgresql://x"},
+            lambda: calls.append("m") or True,
+        )
+        assert outcome is None
+        assert calls == ["m"]
+
+    def test_a_migration_that_does_not_complete_is_reported(self):
+        outcome: Final = apply_migrations(
+            GatewaySettings(serve_full_proxy=True), {"DATABASE_URL": "postgresql://x"}, lambda: False
+        )
+        assert outcome == "prisma migrate deploy did not complete"
+
+    def test_an_unrecoverable_migration_error_is_reported_verbatim(self):
+        def explode() -> bool:
+            raise RuntimeError("P3009 dirty state")
+
+        outcome: Final = apply_migrations(
+            GatewaySettings(serve_full_proxy=True), {"DATABASE_URL": "postgresql://x"}, explode
+        )
+        assert outcome == "P3009 dirty state"
+
+
+class TestMainFullProxyMode:
+    def test_migrations_run_before_uvicorn_in_full_proxy_mode(
+        self, password_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv(FULL_PROXY_ENV_VAR, "true")
+        order: Final[list[str]] = []
+        main(
+            ("--workers", "1"),
+            serve=lambda argv: order.append("serve"),
+            migrate=lambda: order.append("migrate") or True,
+        )
+        assert order == ["migrate", "serve"]
+
+    def test_a_failed_migration_stops_the_gateway_before_uvicorn(
+        self, password_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv(FULL_PROXY_ENV_VAR, "true")
+        served: Final[list[tuple[str, ...]]] = []
+        with pytest.raises(SystemExit) as stopped:
+            main(("--workers", "1"), serve=lambda argv: served.append(tuple(argv)), migrate=lambda: False)
+        assert "migration failed" in str(stopped.value)
+        assert served == []
+
+    def test_the_trimmed_gateway_starts_without_touching_the_schema(self, password_env: dict[str, str]):
+        order: Final[list[str]] = []
+        main(
+            ("--workers", "1"),
+            serve=lambda argv: order.append("serve"),
+            migrate=lambda: order.append("migrate") or True,
+        )
+        assert order == ["serve"]

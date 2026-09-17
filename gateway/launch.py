@@ -8,6 +8,11 @@ handed the loopback URL it listens on. A pre-existing ``DATABASE_URL`` wins in
 wins under token auth too, so exporting it here is enough for every worker to
 pick the pooled URL up unchanged.
 
+With ``GATEWAY_SERVE_FULL_PROXY=true`` (see ``gateway/settings.py``) the
+supervisor also applies pending database migrations before the workers start,
+the way ``proxy_cli.py`` does for the monolithic proxy, and refuses to serve
+when they fail so the previous deployment keeps running.
+
 Run with:
     python -m gateway.launch --workers 4 --host 0.0.0.0 --port 4000
 """
@@ -19,6 +24,7 @@ from typing import Final
 
 from uvicorn.main import main as uvicorn_main
 
+from gateway.settings import GatewaySettings
 from litellm.proxy.db.db_url_settings import DatabaseURLSettings
 from litellm.proxy.db.pgbouncer import (
     PgBouncerError,
@@ -62,9 +68,33 @@ def _serve(argv: Sequence[str]) -> None:
     uvicorn_main(tuple(argv), prog_name="uvicorn")
 
 
-def main(argv: Sequence[str], serve: Callable[[Sequence[str]], None] = _serve) -> None:
+def _migrate() -> bool:
+    from litellm.proxy.db.prisma_client import PrismaManager
+
+    return PrismaManager.setup_database(use_migrate=True, use_v2_resolver=True)
+
+
+def apply_migrations(mode: GatewaySettings, environ: Mapping[str, str], migrate: Callable[[], bool]) -> str | None:
+    """Run pending migrations in full-proxy mode; return the reason to stop when they fail."""
+    if not mode.serve_full_proxy or not environ.get("DATABASE_URL"):
+        return None
+    try:
+        migrated: Final = migrate()
+    except RuntimeError as e:
+        return str(e)
+    return None if migrated else "prisma migrate deploy did not complete"
+
+
+def main(
+    argv: Sequence[str],
+    serve: Callable[[Sequence[str]], None] = _serve,
+    migrate: Callable[[], bool] = _migrate,
+) -> None:
     settings: Final = DatabaseURLSettings.from_env()
     settings.apply_to_env()
+    migration_failure: Final = apply_migrations(GatewaySettings.from_env(os.environ), os.environ, migrate)
+    if migration_failure is not None:
+        sys.exit(f"LiteLLM gateway: database migration failed, not starting workers: {migration_failure}")
     pooled_url: Final = pool_database_url(settings, PgBouncerSettings(), os.environ)
     if isinstance(pooled_url, PgBouncerError):
         sys.exit(f"LiteLLM gateway: in-container pgbouncer could not start: {pooled_url.reason}")
