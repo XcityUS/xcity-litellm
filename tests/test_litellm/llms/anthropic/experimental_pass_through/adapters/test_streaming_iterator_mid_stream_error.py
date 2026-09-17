@@ -15,14 +15,9 @@ Anthropic ``error`` event so the stream stays valid and the client can retry.
 """
 
 import json
-import os
-import sys
-from typing import List, Optional
 from unittest.mock import MagicMock
 
 import pytest
-
-sys.path.insert(0, os.path.abspath("../../../../.."))
 
 from litellm.exceptions import MidStreamFallbackError
 from litellm.llms.anthropic.experimental_pass_through.adapters.streaming_iterator import (
@@ -33,11 +28,9 @@ from litellm.llms.bedrock.common_utils import BedrockError
 from litellm.types.utils import Delta, StreamingChoices
 
 
-def _make_chunk(delta: Delta, finish_reason: Optional[str] = None) -> MagicMock:
+def _make_chunk(delta: Delta, finish_reason: str | None = None) -> MagicMock:
     chunk = MagicMock()
-    chunk.choices = [
-        StreamingChoices(finish_reason=finish_reason, index=0, delta=delta, logprobs=None)
-    ]
+    chunk.choices = [StreamingChoices(finish_reason=finish_reason, index=0, delta=delta, logprobs=None)]
     chunk.usage = None
     chunk._hidden_params = {}
     return chunk
@@ -47,7 +40,7 @@ class _AsyncStreamThenRaise:
     """Yields the given chunks, then raises ``exc`` (mimics a provider stream
     that terminates mid-response)."""
 
-    def __init__(self, items: List[MagicMock], exc: BaseException):
+    def __init__(self, items: list[MagicMock], exc: BaseException):
         self._it = iter(items)
         self._exc = exc
 
@@ -67,7 +60,7 @@ def _parse_sse(raw: bytes) -> tuple[str, dict]:
     return event_line.removeprefix("event: "), json.loads(data_line.removeprefix("data: "))
 
 
-async def _drain_sse(wrapper: AnthropicStreamWrapper) -> List[bytes]:
+async def _drain_sse(wrapper: AnthropicStreamWrapper) -> list[bytes]:
     return [event async for event in wrapper.async_anthropic_sse_wrapper()]
 
 

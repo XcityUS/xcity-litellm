@@ -2936,6 +2936,34 @@
     "default_model_placeholder": "tencent_cloud/deepseek-v3.2"
   },
   {
+    "provider": "BYTEPLUS",
+    "provider_display_name": "BytePlus",
+    "litellm_provider": "byteplus",
+    "credential_fields": [
+      {
+        "key": "api_key",
+        "label": "BytePlus API Key",
+        "placeholder": null,
+        "tooltip": "Your BytePlus Ark API key (ark-...).",
+        "required": true,
+        "field_type": "password",
+        "options": null,
+        "default_value": null
+      },
+      {
+        "key": "api_base",
+        "label": "API Base",
+        "placeholder": "https://ark.ap-southeast.bytepluses.com/api/v3",
+        "tooltip": "BytePlus Ark endpoint.",
+        "required": false,
+        "field_type": "text",
+        "options": null,
+        "default_value": "https://ark.ap-southeast.bytepluses.com/api/v3"
+      }
+    ],
+    "default_model_placeholder": "byteplus/seed-2-0-pro-260328"
+  },
+  {
     "provider": "Soniox",
     "provider_display_name": "Soniox",
     "litellm_provider": "soniox",

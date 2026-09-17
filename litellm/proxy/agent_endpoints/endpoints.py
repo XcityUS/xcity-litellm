@@ -567,19 +567,10 @@ async def get_agents(
                 a for a in returned_agents if bool((a.litellm_params or {}).get("is_public")) == is_public
             ]
 
-        # Stable order so cursor pagination is meaningful.
-        returned_agents.sort(key=lambda a: a.agent_id)
-
-        # Cursor pagination: cursor is the agent_id we just sent as the last
-        # row. Skip past it; take limit+1 to compute has_more.
         if cursor:
-            try:
-                cut = next(i for i, a in enumerate(returned_agents) if a.agent_id == cursor)
-                returned_agents = returned_agents[cut + 1 :]
-            except StopIteration:
-                # Cursor not found — caller asked for a stale page. Return empty.
-                returned_agents = []
-        returned_agents = returned_agents[:limit]
+            cut = next((i for i, a in enumerate(returned_agents) if a.agent_id == cursor), None)
+            returned_agents = [] if cut is None else list(returned_agents[cut + 1 :])
+        returned_agents = list(returned_agents[:limit])
 
         # Redact sensitive fields for non-admin users
         is_admin: Final = (
