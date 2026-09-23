@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Mapping
 from typing import Final, Literal, Self
 
@@ -127,7 +128,24 @@ Scenes require: id, name, description, and evidence quotes.
 Shots require: id, description, prompt, durationSeconds, sceneId, characterIds, dialogues, subtitle, camera, audio, and optional continuitySourceShotId.
 Each dialogue uses speakerCharacterId, text, and emotion. IDs referenced by shots must exist. Use the immediately previous shot ID for continuity.
 Choose each duration by narrative rhythm, normally 4-8 seconds and never 30-second blocks. Produce no markdown or commentary.
+Keep the subject, props, eyeline, hand contact, and camera position physically consistent with the described action.
+Use a camera angle that can physically show the requested action and objects. Do not mirror, reverse, or reorient props merely to expose them to the camera.
+Before returning the breakdown, check every shot for conflicts between action, prop orientation, eyeline, and camera. Encode the concrete spatial arrangement in its description, prompt, and camera fields, and the stable prop layout in its scene description. Do not put staging instructions in dialogue, audio, or subtitle fields.
 Schema: {"version":1,"characters":[{"id":"character_1","name":"","aliases":[],"description":"","evidence":[],"presence":"on_screen","major":true}],"scenes":[{"id":"scene_1","name":"","description":"","evidence":[]}],"shots":[{"id":"shot_1","description":"","prompt":"","camera":"","audio":"","durationSeconds":4,"sceneId":"scene_1","characterIds":["character_1"],"dialogues":[{"speakerCharacterId":"character_1","text":"","emotion":""}],"subtitle":"","continuitySourceShotId":null}]}"""
+COMPUTER_OPERATION_PROMPT: Final = """Computer-operation spatial constraints:
+When a person operates a computer, the viewing surface of the screen and the operating side of the keyboard must face the operator. Their gaze goes to the screen and their hands reach the keyboard or mouse naturally. Prefer a side or over-the-shoulder view.
+For a frontal view of the operator with the computer between them and the camera, normally show the back of the display. Do not force a full frontal face and a fully readable screen into the same view by reversing the computer.
+To show screen content, use an over-the-shoulder view or a screen insert from the operator side. Keep the screen, keyboard, laptop hinge, and operator positions consistent across cuts; change the camera position instead of mirroring or reversing the equipment."""
+COMPUTER_CONTEXT_PATTERN: Final = re.compile(
+    r"电脑|计算机|台式机|笔记本电脑|显示器|键盘|鼠标|工作站|"
+    r"\b(?:computer|laptop|keyboard|monitor|workstation|desktop\s+(?:computer|pc)|pc)\b|"
+    r"\b(?:use|uses|using|click|clicks|clicking|move|moves|moving)\s+(?:a\s+|the\s+)?mouse\b",
+    re.IGNORECASE,
+)
+
+
+def breakdown_system_prompt(script: str) -> str:
+    return f"{SYSTEM_PROMPT}\n{COMPUTER_OPERATION_PROMPT}" if COMPUTER_CONTEXT_PATTERN.search(script) else SYSTEM_PROMPT
 
 
 def _model() -> str:
@@ -180,7 +198,7 @@ async def breakdown_script(
     payload: Final = {
         "model": _model(),
         "messages": (
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": breakdown_system_prompt(body.script)},
             {
                 "role": "user",
                 "content": f"Source language: {body.source_language}\n\nScript:\n{body.script.strip()}",

@@ -3,7 +3,14 @@ from typing import Final
 import pytest
 from pydantic import ValidationError
 
-from gateway.routes.drama import BreakdownRequest, ScriptAnalysis, parse_json_object
+from gateway.routes.drama import (
+    COMPUTER_OPERATION_PROMPT,
+    SYSTEM_PROMPT,
+    BreakdownRequest,
+    ScriptAnalysis,
+    breakdown_system_prompt,
+    parse_json_object,
+)
 
 
 def test_breakdown_request_rejects_empty_script() -> None:
@@ -93,3 +100,22 @@ def test_analysis_rejects_duplicate_shot_ids() -> None:
 def test_json_object_accepts_fenced_model_output() -> None:
     result: Final = parse_json_object('```json\n{"version": 1}\n```')
     assert result == {"version": 1}
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "周野坐在电脑前操作鼠标。",
+        "Alex types on a laptop while reading the monitor.",
+    ],
+)
+def test_system_prompt_adds_computer_staging_only_for_relevant_scripts(script: str) -> None:
+    prompt: Final = breakdown_system_prompt(script)
+    assert prompt.startswith(SYSTEM_PROMPT)
+    assert COMPUTER_OPERATION_PROMPT in prompt
+
+
+def test_system_prompt_omits_computer_staging_from_unrelated_scripts() -> None:
+    prompt: Final = breakdown_system_prompt("A child runs along an empty beach at dawn.")
+    assert prompt == SYSTEM_PROMPT
+    assert COMPUTER_OPERATION_PROMPT not in prompt
