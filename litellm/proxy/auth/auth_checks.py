@@ -857,8 +857,12 @@ BUDGET_ENFORCED_SIDE_EFFECT_ROUTES: Final = frozenset(
 
 
 def route_skips_budget_checks(route: str) -> bool:
+    provider_asset_route: Final = RouteChecks.check_route_access(
+        route=route,
+        allowed_routes=LiteLLMRoutes.provider_asset_routes.value,
+    )
     return route not in BUDGET_ENFORCED_SIDE_EFFECT_ROUTES and (
-        route in MODEL_DISCOVERY_ROUTES or not RouteChecks.is_llm_api_route(route=route)
+        provider_asset_route or route in MODEL_DISCOVERY_ROUTES or not RouteChecks.is_llm_api_route(route=route)
     )
 
 

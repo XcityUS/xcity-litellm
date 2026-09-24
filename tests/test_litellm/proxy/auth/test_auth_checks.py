@@ -8454,6 +8454,9 @@ async def test_access_group_model_fallback_uses_the_injected_database(channel: s
 def test_route_skips_budget_checks_marks_only_spend_free_routes() -> None:
     assert route_skips_budget_checks(route="/v1/models") is True
     assert route_skips_budget_checks(route="/spend/logs") is True
+    assert route_skips_budget_checks(route="/v1/provider-assets/status") is True
+    assert route_skips_budget_checks(route="/v1/provider-assets/groups/group-123") is True
+    assert route_skips_budget_checks(route="/v1/provider-assets/asset-123") is True
     assert route_skips_budget_checks(route="/health") is False
     assert route_skips_budget_checks(route="/v1/chat/completions") is False
 
