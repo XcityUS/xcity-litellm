@@ -97,14 +97,14 @@ model LiteLLM_AgentVersionTable {
   litellm_params    Json?
   static_headers    Json?
   created_by        String?
-  created_at        DateTime @default(now())
+  created_at        DateTime @default(now()) @client.Timestamp(6)
   is_rollback       Boolean  @default(false)
   rolled_back_from  Int?
 
-  agent LiteLLM_AgentsTable @relation(fields: [agent_id], references: [agent_id], onDelete: Cascade)
+  agent LiteLLM_AgentsTable @relation(fields: [agent_id], references: [agent_id], onDelete: Cascade, onUpdate: NoAction, map: "LiteLLM_AgentVersionTable_agent_fk")
 
-  @@unique([agent_id, version_number])
-  @@index([agent_id, version_number(sort: Desc)])
+  @@unique([agent_id, version_number], map: "LiteLLM_AgentVersionTable_agent_id_version_number_unique")
+  @@index([agent_id, version_number(sort: Desc)], map: "LiteLLM_AgentVersionTable_agent_id_version_idx")
 }
 
 model LiteLLM_OrganizationTable {
@@ -511,7 +511,7 @@ model LiteLLM_VerificationToken {
 
     // SELECT ... FROM "public"."LiteLLM_VerificationToken" WHERE (("public"."LiteLLM_VerificationToken"."expires" IS NULL OR "public"."LiteLLM_VerificationToken"."expires" > $1) AND "public"."LiteLLM_VerificationToken"."budget_reset_at" < $2) OFFSET $3
     @@index([budget_reset_at, expires])
-    @@index([app_id])
+    // app_id uses a SQL-managed partial index, which Prisma cannot represent.
 }
 
 model LiteLLM_JWTKeyMapping {
@@ -616,7 +616,7 @@ model LiteLLM_DeletedVerificationToken {
     @@index([deleted_at])
     @@index([user_id])
     @@index([team_id])
-    @@index([app_id])
+    // app_id uses a SQL-managed partial index, which Prisma cannot represent.
     @@index([organization_id])
     @@index([key_alias])
     @@index([created_at])
@@ -1788,16 +1788,17 @@ model LiteLLM_WebhookSubscriptionTable {
   secret_hash          String
   filters              Json?
   is_active            Boolean  @default(true)
-  created_at           DateTime @default(now())
+  created_at           DateTime @default(now()) @client.Timestamp(6)
   created_by           String?
-  updated_at           DateTime @default(now()) @updatedAt
-  last_success_at      DateTime?
-  last_failure_at      DateTime?
+  updated_at           DateTime @default(now()) @updatedAt @client.Timestamp(6)
+  last_success_at      DateTime? @client.Timestamp(6)
+  last_failure_at      DateTime? @client.Timestamp(6)
   consecutive_failures Int      @default(0)
 
   dlq LiteLLM_WebhookDLQ[]
 
-  @@index([app_id, is_active])
+  @@index([app_id, is_active], map: "LiteLLM_WebhookSubscriptionTable_app_active_idx")
+  @@index([events], type: Gin, map: "LiteLLM_WebhookSubscriptionTable_events_gin_idx")
 }
 
 // S6-05: dead-letter parking lot for webhook deliveries that exhausted retries.
@@ -1808,12 +1809,12 @@ model LiteLLM_WebhookDLQ {
   payload          Json
   last_error       String?
   attempts         Int      @default(0)
-  first_attempt_at DateTime @default(now())
-  last_attempt_at  DateTime @default(now())
+  first_attempt_at DateTime @default(now()) @client.Timestamp(6)
+  last_attempt_at  DateTime @default(now()) @client.Timestamp(6)
 
-  subscription LiteLLM_WebhookSubscriptionTable @relation(fields: [subscription_id], references: [subscription_id], onDelete: Cascade)
+  subscription LiteLLM_WebhookSubscriptionTable @relation(fields: [subscription_id], references: [subscription_id], onDelete: Cascade, onUpdate: NoAction, map: "LiteLLM_WebhookDLQ_subscription_fk")
 
-  @@index([subscription_id, last_attempt_at(sort: Desc)])
+  @@index([subscription_id, last_attempt_at(sort: Desc)], map: "LiteLLM_WebhookDLQ_subscription_idx")
 }
 
 
@@ -1837,9 +1838,11 @@ model LiteLLM_XCTAppTable {
   rpm_limit                Int?
   daily_budget             Decimal? @client.Decimal(18, 6)
   is_active                Boolean  @default(true)
-  created_at               DateTime @default(now())
+  created_at               DateTime @default(now()) @client.Timestamp(6)
   created_by               String?
-  updated_at               DateTime @default(now()) @updatedAt
+  updated_at               DateTime @default(now()) @updatedAt @client.Timestamp(6)
+
+  @@index([oauth_client_id])
 }
 
 // S4-02: short-lived OAuth authorization codes. Issued by /oauth/authorize
@@ -1852,11 +1855,11 @@ model LiteLLM_OAuthAuthorizationCode {
   code_challenge        String
   code_challenge_method String   @default("S256")
   scope                 String[] @default([])
-  expires_at            DateTime
-  consumed_at           DateTime?
-  created_at            DateTime @default(now())
+  expires_at            DateTime @client.Timestamp(6)
+  consumed_at           DateTime? @client.Timestamp(6)
+  created_at            DateTime @default(now()) @client.Timestamp(6)
 
-  @@index([client_id, expires_at])
+  @@index([client_id, expires_at], map: "LiteLLM_OAuthAuthorizationCode_client_expires_idx")
 }
 
 model LiteLLM_AssetVerification {

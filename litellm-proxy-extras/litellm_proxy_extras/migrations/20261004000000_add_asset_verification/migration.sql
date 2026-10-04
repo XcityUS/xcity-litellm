@@ -1,4 +1,4 @@
-CREATE TABLE "LiteLLM_AssetVerification" (
+CREATE TABLE IF NOT EXISTS "LiteLLM_AssetVerification" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "owner_id" TEXT NOT NULL,
     "token_hash" TEXT UNIQUE,
@@ -16,5 +16,5 @@ CREATE TABLE "LiteLLM_AssetVerification" (
     "cancelled_at" TIMESTAMPTZ(6),
     "attempts" INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX "LiteLLM_AssetVerification_owner_id_created_at_idx"
+CREATE INDEX IF NOT EXISTS "LiteLLM_AssetVerification_owner_id_created_at_idx"
     ON "LiteLLM_AssetVerification"("owner_id", "created_at");

@@ -12,6 +12,7 @@ than in the central reference table still counts as documented.
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Final
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MODULE_PATH = _REPO_ROOT / "tests" / "documentation_tests" / "test_env_keys.py"
@@ -188,3 +189,16 @@ def test_only_documentation_pages_are_scanned_for_mentions(tmp_path: Path) -> No
     (tmp_path / "notes.txt").write_text("QSTASH_ALPHA\n", encoding="utf-8")
     (tmp_path / "example.py").write_text('get_secret("QSTASH_BRAVO")\n', encoding="utf-8")
     assert gate.collect_documented_keys(str(tmp_path)) == frozenset()
+
+
+def test_local_documentation_supplements_upstream_without_exempting_missing_keys(tmp_path: Path) -> None:
+    source_dir, docs_dir = _write_tree(
+        tmp_path,
+        '\n'.join(('os.getenv("QSTASH_ALPHA")', 'os.getenv("QSTASH_BRAVO")', 'os.getenv("QSTASH_CHARLIE")')),
+        "Set `QSTASH_ALPHA` in the upstream configuration.\n",
+    )
+    local_docs: Final = tmp_path / "xct-docs"
+    local_docs.mkdir()
+    (local_docs / "environment.md").write_text("Set `QSTASH_BRAVO` in this fork.\n", encoding="utf-8")
+
+    assert gate.undocumented_env_keys(source_dir, docs_dir, (str(local_docs),)) == {"QSTASH_CHARLIE"}

@@ -1,6 +1,7 @@
 import os
 import re
 from collections.abc import Iterator
+from typing import Final
 
 # Define the base directory for the litellm repository and documentation path
 repo_base = "./litellm"  # Change this to your actual path
@@ -14,6 +15,7 @@ ENV_KEY_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 DOCS_BASE = "./docs/my-website/docs"
+LOCAL_DOCS_BASE: Final = "./xct-docs/docs"
 REFERENCE_TABLE_PATH = f"{DOCS_BASE}/proxy/config_settings.md"
 DOCS_SUFFIXES = (".md", ".mdx")
 DOCUMENTED_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9_]*\b")
@@ -131,22 +133,27 @@ def collect_documented_keys(docs_dir: str) -> frozenset[str]:
     )
 
 
-def undocumented_env_keys(base_dir: str, docs_dir: str) -> frozenset[str]:
-    """Return the env vars read under ``base_dir`` that no page under ``docs_dir`` mentions."""
-    return collect_env_keys(base_dir) - collect_documented_keys(docs_dir)
+def undocumented_env_keys(
+    base_dir: str, docs_dir: str, additional_docs_dirs: tuple[str, ...] = ()
+) -> frozenset[str]:
+    """Return the env vars read under ``base_dir`` that none of the documentation roots mention."""
+    return collect_env_keys(base_dir) - frozenset(
+        key for directory in (docs_dir, *additional_docs_dirs) for key in collect_documented_keys(directory)
+    )
 
 
 def main() -> None:
     if not os.path.isdir(DOCS_BASE):
         raise Exception(f"No documentation found at {DOCS_BASE}; check out BerriAI/litellm-docs into docs/my-website")
 
-    undocumented_keys = undocumented_env_keys(repo_base, DOCS_BASE)
+    undocumented_keys = undocumented_env_keys(repo_base, DOCS_BASE, (LOCAL_DOCS_BASE,))
     if undocumented_keys:
         raise Exception(
             f"Environment variables read under {repo_base} but mentioned nowhere in the docs: "
             f"{sorted(undocumented_keys)}"
             f"\nDocument each one, either on the relevant provider page or as a row in the "
-            f"'environment variables - Reference' table in {REFERENCE_TABLE_PATH}"
+            f"'environment variables - Reference' table in {REFERENCE_TABLE_PATH}, "
+            f"or the repository documentation under {LOCAL_DOCS_BASE}"
         )
     print(f"Every environment variable read under {repo_base} is documented")
 
