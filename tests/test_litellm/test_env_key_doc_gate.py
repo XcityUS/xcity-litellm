@@ -10,6 +10,7 @@ than in the central reference table still counts as documented.
 """
 
 import importlib.util
+import runpy
 import sys
 from pathlib import Path
 from typing import Final
@@ -202,3 +203,28 @@ def test_local_documentation_supplements_upstream_without_exempting_missing_keys
     (local_docs / "environment.md").write_text("Set `QSTASH_BRAVO` in this fork.\n", encoding="utf-8")
 
     assert gate.undocumented_env_keys(source_dir, docs_dir, (str(local_docs),)) == {"QSTASH_CHARLIE"}
+
+
+def test_router_documentation_reads_every_row_and_only_parameter_columns() -> None:
+    router_gate: Final = runpy.run_path(str(_REPO_ROOT / "tests/documentation_tests/test_router_settings.py"))
+    content: Final = "\n".join(
+        (
+            "### router_settings - Reference",
+            "| Name | Type | Default | Description |",
+            "| --- | --- | --- | --- |",
+            "| first_key | str | null | third_key is mentioned here only |",
+            "| `second_key` | str | null | Description |",
+            "#### Advanced settings",
+            "| advanced_key | str | null | Description |",
+            "### general_settings - Reference",
+            "| other_section | str | null | Description |",
+        )
+    )
+    assert router_gate["extract_documented_router_settings"](content) == {"first_key", "second_key", "advanced_key"}
+
+
+def test_router_documentation_accepts_a_final_section_and_requires_its_heading() -> None:
+    router_gate: Final = runpy.run_path(str(_REPO_ROOT / "tests/documentation_tests/test_router_settings.py"))
+    row: Final = "| final_key | str | null | Description |\n"
+    assert router_gate["extract_documented_router_settings"]("### router_settings - Reference\n" + row) == {"final_key"}
+    assert router_gate["extract_documented_router_settings"](row) == frozenset()
