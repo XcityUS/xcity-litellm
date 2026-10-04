@@ -1858,3 +1858,24 @@ model LiteLLM_OAuthAuthorizationCode {
 
   @@index([client_id, expires_at])
 }
+
+model LiteLLM_AssetVerification {
+  id              String   @id
+  owner_id        String
+  token_hash      String?  @unique
+  inviter_name    String   @default("")
+  person_name     String   @default("")
+  callback_url    String
+  locale          String   @default("en")
+  expires_at      DateTime @client.Timestamptz(6)
+  created_at      DateTime @default(now()) @client.Timestamptz(6)
+  consented_at    DateTime? @client.Timestamptz(6)
+  consent_version String?
+  byted_token     String?  @unique
+  h5_link         String?
+  group_id        String?
+  cancelled_at   DateTime? @client.Timestamptz(6)
+  attempts        Int      @default(0)
+
+  @@index([owner_id, created_at])
+}

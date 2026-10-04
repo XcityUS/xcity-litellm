@@ -31,11 +31,13 @@ from gateway.routes.allowlist import (
     select_routes,
 )
 from gateway.routes.drama import router as drama_router
+from gateway.routes.portrait_invitations import router as portrait_invitations_router
 from gateway.routes.provider_assets import router as provider_assets_router
 from gateway.settings import GatewaySettings
 from litellm.proxy.proxy_server import app
 
 app.include_router(drama_router)
+app.include_router(portrait_invitations_router)
 app.include_router(provider_assets_router)
 
 

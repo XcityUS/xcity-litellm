@@ -510,6 +510,8 @@ class LiteLLMRoutes(enum.Enum):
         "/v1/provider-assets/groups/{group_id}",
         "/v1/provider-assets/verification-sessions",
         "/v1/provider-assets/verification-results",
+        "/v1/provider-assets/invitations",
+        "/v1/provider-assets/invitations/{invitation_id}",
     )
 
     anthropic_routes = [

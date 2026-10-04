@@ -5,8 +5,10 @@ import hashlib
 import os
 import re
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 from typing import Final, Literal
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
@@ -16,6 +18,8 @@ from gateway.providers.byteplus_assets import (
     ProviderFailure,
     ProviderSuccess,
 )
+from gateway.verification.service import create_session, finish
+from gateway.verification.store import Verification, VerificationRepository, get_store
 from litellm.proxy.auth.user_api_key_auth import UserAPIKeyAuth, user_api_key_auth
 
 router: Final = APIRouter(prefix="/v1/provider-assets", tags=["provider-assets"])
@@ -105,7 +109,7 @@ async def _payload(client: BytePlusAssetClient, action: str, body: Mapping[str, 
             raise HTTPException(status_code=status_code, detail=message)
 
 
-def _user_id(auth: UserAPIKeyAuth) -> str:
+def asset_owner(auth: UserAPIKeyAuth) -> str:
     user_id: Final = auth.user_id.strip() if isinstance(auth.user_id, str) else ""
     if not user_id:
         raise HTTPException(status_code=403, detail="The API key is not linked to a user")
@@ -297,7 +301,7 @@ async def list_provider_asset_groups(
         ("LivenessFace",) if type == "liveness" else ("AIGC",) if type == "aigc" else ("LivenessFace", "AIGC")
     )
     pages: Final = await asyncio.gather(*(_list_groups(client, group_type) for group_type in requested_types))
-    user_id: Final = _user_id(auth)
+    user_id: Final = asset_owner(auth)
     groups: Final = tuple(
         {
             "id": _string_field(group, "Id", "ID", "GroupId", "groupId", "AssetGroupId"),
@@ -322,7 +326,7 @@ async def create_provider_asset_group(
     name: Final = request.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Group name is required")
-    user_id: Final = _user_id(auth)
+    user_id: Final = asset_owner(auth)
     slug: Final = _group_slug(name)
     group_name: Final = _owned_group_name(user_id, slug)
     groups: Final = await _list_groups(client, "AIGC")
@@ -353,11 +357,11 @@ async def delete_provider_asset_group(
     group_id: str,
     auth: UserAPIKeyAuth = Depends(user_api_key_auth),
     client: BytePlusAssetClient = Depends(get_asset_client),
-):
+) -> dict[str, object]:
     normalized_group_id: Final = group_id.strip()
     if not normalized_group_id:
         raise HTTPException(status_code=400, detail="Asset group ID is required")
-    await _require_owned_group(client, normalized_group_id, _user_id(auth))
+    await _require_owned_group(client, normalized_group_id, asset_owner(auth))
     await _payload(client, "DeleteAssetGroup", {"Id": normalized_group_id})
     return {}
 
@@ -372,7 +376,7 @@ async def list_provider_assets(
         ("LivenessFace",) if type == "liveness" else ("AIGC",) if type == "aigc" else ("LivenessFace", "AIGC")
     )
     pages: Final = await asyncio.gather(*(_list_groups(client, group_type) for group_type in requested_types))
-    user_id: Final = _user_id(auth)
+    user_id: Final = asset_owner(auth)
     owned_groups: Final = tuple(
         (
             _string_field(group, "Id", "ID", "GroupId", "groupId", "AssetGroupId"),
@@ -384,7 +388,7 @@ async def list_provider_assets(
         and _is_owned_group(_string_field(group, "Name", "name"), user_id)
     )
     group_types: Final = dict(owned_groups)
-    group_queries: Final = tuple(
+    group_queries: Final[tuple[tuple[AssetGroupType, tuple[str, ...]], ...]] = tuple(
         (group_type, tuple(group_id for group_id, current_type in owned_groups if current_type == group_type))
         for group_type in requested_types
         if any(current_type == group_type for _, current_type in owned_groups)
@@ -422,7 +426,7 @@ async def create_provider_asset(
     auth: UserAPIKeyAuth = Depends(user_api_key_auth),
     client: BytePlusAssetClient = Depends(get_asset_client),
 ):
-    await _require_owned_group(client, request.group_id.strip(), _user_id(auth))
+    await _require_owned_group(client, request.group_id.strip(), asset_owner(auth))
 
     payload: Final = await _payload(
         client,
@@ -454,7 +458,7 @@ async def get_provider_asset(
     group_id: Final = _string_field(asset, "GroupId", "groupId", "AssetGroupId")
     if not group_id:
         raise HTTPException(status_code=502, detail="BytePlus returned no asset group ID")
-    await _require_owned_group(client, group_id, _user_id(auth))
+    await _require_owned_group(client, group_id, asset_owner(auth))
     return {
         "assetId": asset_id.strip(),
         "groupId": group_id,
@@ -467,20 +471,28 @@ async def get_provider_asset(
 @router.post("/verification-sessions")
 async def create_verification_session(
     request: VerificationSessionRequest,
-    _auth: UserAPIKeyAuth = Depends(user_api_key_auth),
+    auth: UserAPIKeyAuth = Depends(user_api_key_auth),
     client: BytePlusAssetClient = Depends(get_asset_client),
+    store: VerificationRepository = Depends(get_store),
 ):
     callback: Final = urlparse(request.callback_url.strip())
     if callback.scheme not in ("http", "https") or not callback.netloc:
         raise HTTPException(status_code=400, detail="A valid callback URL is required")
-    payload: Final = await _payload(
-        client, "CreateVisualValidateSession", {"CallbackURL": request.callback_url.strip()}
-    )
-    root: Final = _result_root(payload)
-    h5_link: Final = _string_field(root, "H5Link", "h5Link")
-    byted_token: Final = _string_field(root, "BytedToken", "bytedToken")
-    if not h5_link or not byted_token:
-        raise HTTPException(status_code=502, detail="BytePlus returned an incomplete verification session")
+    owner: Final = asset_owner(auth)
+    async with store.transaction() as transaction:
+        h5_link, byted_token = await create_session(client, request.callback_url.strip())
+        now: Final = datetime.now(timezone.utc)
+        await transaction.insert(
+            Verification(
+                id=str(uuid4()),
+                owner_id=owner,
+                callback_url=request.callback_url.strip(),
+                expires_at=now + timedelta(hours=24),
+                created_at=now,
+                byted_token=byted_token,
+                h5_link=h5_link,
+            )
+        )
     return {"h5Link": h5_link, "bytedToken": byted_token}
 
 
@@ -489,11 +501,10 @@ async def resolve_verification_result(
     request: VerificationResultRequest,
     auth: UserAPIKeyAuth = Depends(user_api_key_auth),
     client: BytePlusAssetClient = Depends(get_asset_client),
+    store: VerificationRepository = Depends(get_store),
 ):
-    payload: Final = await _payload(client, "GetVisualValidateResult", {"BytedToken": request.byted_token.strip()})
-    root: Final = _result_root(payload)
-    group_id: Final = _string_field(root, "GroupId", "groupId", "Id", "id")
-    if not group_id:
-        raise HTTPException(status_code=502, detail="BytePlus returned no verified group ID")
-    await _payload(client, "UpdateAssetGroup", {"Id": group_id, "Name": _owner_tag(_user_id(auth))})
-    return {"groupId": group_id}
+    async with store.transaction() as transaction:
+        record: Final = await transaction.one("byted_token", request.byted_token.strip())
+        if record.owner_id != asset_owner(auth):
+            raise HTTPException(403, "VERIFICATION_SESSION_MISMATCH")
+        return {"groupId": await finish(record, transaction, client)}
