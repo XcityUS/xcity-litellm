@@ -11,7 +11,7 @@ FROM $LITELLM_BUILD_IMAGE AS pgbouncer-builder
 ARG PGBOUNCER_VERSION
 ARG PGBOUNCER_SHA256
 USER root
-RUN apk add --no-cache build-base pkgconf libevent-dev openssl-dev curl
+RUN apk add --no-cache --upgrade libcrypto3 libssl3 build-base pkgconf libevent-dev openssl-dev curl
 WORKDIR /build
 RUN curl -fsSL -o pgbouncer.tar.gz "https://www.pgbouncer.org/downloads/files/${PGBOUNCER_VERSION}/pgbouncer-${PGBOUNCER_VERSION}.tar.gz" && \
     echo "${PGBOUNCER_SHA256}  pgbouncer.tar.gz" | sha256sum -c - && \
@@ -32,7 +32,7 @@ COPY --from=uvbin /uv /uvx /usr/local/bin/
 # instead of nodeenv downloading one whose dynamic deps may not be in Wolfi
 # (e.g. Node 26.2.0 needs libatomic). Retry for transient apk.cgr.dev flakes.
 RUN for i in 1 2 3; do \
-      apk add --no-cache bash gcc python-3.13 python-3.13-dev openssl openssl-dev libsndfile nodejs npm && break; \
+      apk add --no-cache --upgrade libcrypto3 libssl3 bash gcc python-3.13 python-3.13-dev openssl openssl-dev libsndfile nodejs npm && break; \
       [ $i = 3 ] && { echo "apk add failed after 3 retries" >&2; exit 1; }; \
       sleep 5; \
     done
@@ -91,7 +91,7 @@ FROM $LITELLM_RUNTIME_IMAGE AS runtime
 USER root
 
 RUN for i in 1 2 3; do \
-      apk add --no-cache bash openssl tzdata python-3.13 libsndfile libatomic libevent && break; \
+      apk add --no-cache --upgrade libcrypto3 libssl3 bash openssl tzdata python-3.13 libsndfile libatomic libevent && break; \
       [ $i = 3 ] && { echo "apk add failed after 3 retries" >&2; exit 1; }; \
       sleep 5; \
     done
