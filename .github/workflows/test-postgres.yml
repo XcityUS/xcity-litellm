@@ -48,7 +48,7 @@ jobs:
       matrix:
         include:
           - shard: proxy-behavior
-            test-path: "tests/proxy_behavior"
+            test-path: "tests/proxy_behavior tests/gateway/test_portrait_invitations.py"
             seed: db-push
             workers: 0
             timeout-minutes: 25
@@ -70,6 +70,7 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/litellm_test"
+      PORTRAIT_TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/litellm_test"
 
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0

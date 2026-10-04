@@ -68,7 +68,7 @@ class VerificationStore:
             f"""INSERT INTO {TABLE}
             (id, owner_id, token_hash, inviter_name, person_name, callback_url, locale,
              expires_at, created_at, byted_token, h5_link)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9::timestamptz,$10,$11)""",
             record.id,
             record.owner_id,
             record.token_hash,
