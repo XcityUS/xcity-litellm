@@ -91,7 +91,7 @@ FROM $LITELLM_RUNTIME_IMAGE AS runtime
 USER root
 
 RUN for i in 1 2 3; do \
-      apk add --no-cache --upgrade libcrypto3 libssl3 bash openssl tzdata python-3.13 libsndfile libatomic libevent && break; \
+      apk add --no-cache --upgrade libcrypto3 libssl3 bash openssl tzdata nodejs python-3.13 libsndfile libatomic libevent && break; \
       [ $i = 3 ] && { echo "apk add failed after 3 retries" >&2; exit 1; }; \
       sleep 5; \
     done
@@ -104,7 +104,10 @@ ENV HOME=/home/nonroot \
     PYTHONPATH="/app" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PRISMA_BINARY_CACHE_DIR=/opt/prisma/binaries
+    PRISMA_BINARY_CACHE_DIR=/opt/prisma/binaries \
+    PRISMA_CLI_PATH=/opt/prisma/binaries/node_modules/.bin/prisma \
+    PRISMA_CLI_QUERY_ENGINE_TYPE=binary \
+    PRISMA_OFFLINE_MODE=true
 
 COPY --from=builder --chown=nonroot:nonroot /app /app
 COPY --from=builder /opt/prisma /opt/prisma
@@ -113,6 +116,8 @@ COPY --from=pgbouncer-builder /usr/local/bin/pgbouncer /usr/local/bin/pgbouncer
 RUN find /app/.venv -type f -path "*/tornado/test/*" -delete && \
     find /app/.venv -type d -path "*/tornado/test" -delete && \
     chmod -R a+rX /opt/prisma && \
+    test -x /opt/prisma/binaries/node_modules/.bin/prisma && \
+    test -f /opt/prisma/binaries/node_modules/prisma/build/index.js && \
     python -c "from prisma.client import BINARY_PATHS; paths = list(BINARY_PATHS.query_engine.values()); assert paths and all(p.startswith('/opt/prisma/') for p in paths), paths" && \
     python -c "import litellm; from litellm.rust_bridge.loader import native_bridge_available; assert litellm.__file__ == '/app/litellm/__init__.py', litellm.__file__; assert native_bridge_available()"
 

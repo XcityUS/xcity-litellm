@@ -5,6 +5,7 @@
     "dockerfilePath": "./gateway/Dockerfile"
   },
   "deploy": {
+    "preDeployCommand": "python -m migrations.run",
     "healthcheckPath": "/health/liveliness",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
