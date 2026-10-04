@@ -90,6 +90,18 @@ model_list:
       access_groups: ["free", "pro", "team"]
 
   # ============================================================
+  # OpenAI — Audio Transcription Models
+  # ============================================================
+
+  - model_name: whisper-1
+    litellm_params:
+      model: openai/whisper-1
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: audio_transcription
+      access_groups: ["free", "pro", "team"]
+
+  # ============================================================
   # Anthropic — Chat Models
   # ============================================================
 
