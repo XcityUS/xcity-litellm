@@ -18,9 +18,3 @@ ALTER TABLE "LiteLLM_SpendLogs"
   ADD COLUMN IF NOT EXISTS "entity_type"     TEXT,
   ADD COLUMN IF NOT EXISTS "entity_id"       TEXT,
   ADD COLUMN IF NOT EXISTS "entity_version"  TEXT;
-
-CREATE INDEX IF NOT EXISTS "LiteLLM_SpendLogs_app_id_startTime_idx"
-  ON "LiteLLM_SpendLogs" ("app_id", "startTime");
-
-CREATE INDEX IF NOT EXISTS "LiteLLM_SpendLogs_entity_type_entity_id_idx"
-  ON "LiteLLM_SpendLogs" ("entity_type", "entity_id");
