@@ -21,7 +21,7 @@ services:
       context: ../xct-agents/integrations/litellm/gateway
     environment:
       LITELLM_API_BASE: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY}
       DEFAULT_MODEL: ${XCT_AGENT_DEFAULT_MODEL:-deepseek-v3.2}
       AGENTS_REPO_PATH: /agents-repo
     volumes:
