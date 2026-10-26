@@ -119,7 +119,7 @@ config = {
         "${eM.server_name}": {
             "url": "${(0,b.getProxyBaseUrl)()}/${eM.server_name}/mcp",
             "headers": {
-                "x-litellm-api-key": "Bearer sk-1234"
+                "x-litellm-api-key": "Bearer sk-your-master-key"
             }
         }
     }
@@ -153,7 +153,7 @@ config = {
         "${eM.server_name}": {
             "url": "${(0,b.getProxyBaseUrl)()}/${eM.server_name}/mcp",
             "headers": {
-                "x-litellm-api-key": "Bearer sk-1234"
+                "x-litellm-api-key": "Bearer sk-your-master-key"
             }
         }
     }
