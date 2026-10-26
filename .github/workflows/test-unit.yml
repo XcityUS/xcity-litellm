@@ -1039,7 +1039,7 @@ jobs:
           uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Install legacy time zone names
-        run: sudo apt-get install -y --no-install-recommends tzdata-legacy
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tzdata-legacy
 
       - name: Run tests
         id: tests
