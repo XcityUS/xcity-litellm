@@ -552,6 +552,9 @@ def test_a_completed_task_reports_its_delivered_geometry_duration_and_tokens():
         "created_at": 1791989938,
         "completed_at": 1791990031,
         "expires_at": None,
+        "output_url": None,
+        "last_frame_url": None,
+        "seed": None,
         "error": None,
         "progress": None,
         "remixed_from_video_id": None,
@@ -805,7 +808,12 @@ def test_volcengine_resolves_to_the_video_config():
 
 ARK_VIDEO_TIERS: Final = {
     SEEDANCE_2_5: {"480p": ((854, 480), 70), "720p": ((1280, 720), 70), "1080p": ((1920, 1080), 77)},
-    SEEDANCE_2_0: {"480p": ((864, 496), 46), "720p": ((1280, 720), 46), "1080p": ((1920, 1080), 51), "4k": ((3840, 2160), 26)},
+    SEEDANCE_2_0: {
+        "480p": ((864, 496), 46),
+        "720p": ((1280, 720), 46),
+        "1080p": ((1920, 1080), 51),
+        "4k": ((3840, 2160), 26),
+    },
     SEEDANCE_2_0_FAST: {"480p": ((864, 496), 37), "720p": ((1280, 720), 37)},
     "doubao-seedance-2-0-mini-260615": {"480p": ((864, 496), 23), "720p": ((1280, 720), 23)},
 }

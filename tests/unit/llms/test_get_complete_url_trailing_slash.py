@@ -250,6 +250,10 @@ def test_get_complete_url_keeps_one_slash_after_a_trailing_slash_api_base(builde
 
 @pytest.mark.parametrize("builder_class", [_builder_param(cls) for cls in _all_builders()])
 def test_get_complete_url_sends_the_same_url_with_or_without_a_trailing_slash(builder_class: type) -> None:
+    if _builder_id(builder_class) == "a2a.chat.transformation.A2AConfig":
+        pytest.skip(
+            "A2A posts to the registered agent card URL verbatim: stripping its slash triggers a 307 that drops the body"
+        )
     with_slash: Final = _built_url(builder_class, API_BASE_WITH_TRAILING_SLASH)
     without_slash: Final = _built_url(builder_class, API_BASE_WITHOUT_TRAILING_SLASH)
 

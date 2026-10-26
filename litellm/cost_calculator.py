@@ -175,6 +175,15 @@ _A2A_CALL_TYPES: Final = frozenset(
     }
 )
 
+_VIDEO_POLL_CALL_TYPES: Final = frozenset(
+    (
+        CallTypes.video_retrieve.value,
+        CallTypes.avideo_retrieve.value,
+        "video_status",
+        "avideo_status",
+    )
+)
+
 _VIDEO_CALL_TYPES: Final = frozenset(
     {
         CallTypes.create_video.value,
@@ -1845,6 +1854,8 @@ def completion_cost(
                         has_video_input = bool(_vhv)
                         video_count = _vc if isinstance(_vc, int) and not isinstance(_vc, bool) and _vc > 1 else 1
 
+                        if call_type in _VIDEO_POLL_CALL_TYPES and video_tokens is None:
+                            return 0.0
                         if _video_model_info is None and provider_reported_cost is not None:
                             return float(provider_reported_cost)
 

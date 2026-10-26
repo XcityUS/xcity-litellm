@@ -260,6 +260,13 @@ _PRISMA_VIEWS: Final[frozenset[str]] = frozenset(
 )
 _PRISMA_MODELS: Final[frozenset[str]] = frozenset(
     (
+        "LiteLLM_AgentVersionTable",
+        "LiteLLM_AssetVerification",
+        "LiteLLM_OAuthAuthorizationCode",
+        "LiteLLM_WebhookDLQ",
+        "LiteLLM_WebhookSubscriptionTable",
+        "LiteLLM_XCTAppTable",
+        "LiteLLM_XctContextTable",
         "LiteLLM_BudgetTable",
         "LiteLLM_CredentialsTable",
         "LiteLLM_ProxyModelTable",

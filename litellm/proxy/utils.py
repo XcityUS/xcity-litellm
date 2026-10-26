@@ -9721,6 +9721,11 @@ def create_model_info_response(
         "owned_by": provider,
     }
 
+    alias_target: Final = (
+        resolve_model_group_alias(llm_router.model_group_alias, model_id) if llm_router is not None else None
+    )
+    lookup_model: Final = alias_target if alias_target is not None else model_id
+
     # Capability discovery fields (S1-06). Best-effort: any failure inside the
     # helper just yields an empty capabilities dict — never breaks the listing.
     try:
@@ -9728,15 +9733,10 @@ def create_model_info_response(
             _compute_model_capability_flags,
         )
 
-        row = (getattr(litellm, "model_cost", {}) or {}).get(model_id) or {}
-        base["capabilities"] = _compute_model_capability_flags(model_id, row).model_dump()
+        row = (getattr(litellm, "model_cost", {}) or {}).get(lookup_model) or {}
+        base["capabilities"] = _compute_model_capability_flags(lookup_model, row).model_dump()
     except Exception:  # pragma: no cover — strictly additive metadata
         pass
-
-    alias_target: Final = (
-        resolve_model_group_alias(llm_router.model_group_alias, model_id) if llm_router is not None else None
-    )
-    lookup_model: Final = alias_target if alias_target is not None else model_id
 
     listing_info: Final = llm_router.get_model_listing_info(lookup_model) if llm_router is not None else None
 
