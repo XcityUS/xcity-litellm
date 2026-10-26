@@ -40,6 +40,7 @@ _CACHE_PARAMETER_HELPERS: Final = frozenset(
 _IN_MEMORY_ONLY_CALLERS: Final = frozenset(
     {
         "litellm/integrations/datadog/datadog_team_handler.py",
+        "litellm/proxy/agent_endpoints/marketplace_config.py",
         "litellm/integrations/humanloop.py",
         "litellm/integrations/langfuse/langfuse_handler.py",
         "litellm/integrations/langfuse/langfuse_prompt_management.py",

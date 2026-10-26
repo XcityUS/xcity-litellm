@@ -5335,16 +5335,20 @@ def _raise_if_generation_only_model(
     Mode comes from the deployment's model_info (proxy/router path) or the
     cost map (direct SDK path); models with no known mode pass through.
     """
-    mode = model_info.get("mode") if isinstance(model_info, dict) else None
-    if mode not in GENERATION_ONLY_MODES:
+    entry = model_info if isinstance(model_info, dict) else None
+    if entry is None or entry.get("mode") not in GENERATION_ONLY_MODES:
         for key in (
             f"{custom_llm_provider}/{model}" if custom_llm_provider else None,
             model,
         ):
             if key and key in litellm.model_cost:
-                mode = litellm.model_cost[key].get("mode")
+                entry = litellm.model_cost[key]
                 break
-    if mode in GENERATION_ONLY_MODES:
+    mode = entry.get("mode") if isinstance(entry, dict) else None
+    chat_capable = (
+        "/v1/chat/completions" in (entry.get("supported_endpoints") or ()) if isinstance(entry, dict) else False
+    )
+    if mode in GENERATION_ONLY_MODES and not chat_capable:
         raise litellm.BadRequestError(
             message=(
                 f"{model} is a {mode.replace('_', ' ')} model and cannot serve"

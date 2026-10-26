@@ -24,11 +24,12 @@ everything. Non-admin gets:
 
 import hashlib
 import os
-from typing import Any
+from typing import Any, Final
 
 from fastapi import APIRouter, Depends
 
 import litellm
+from litellm._internal_context import service_target
 from litellm._logging import verbose_proxy_logger
 from litellm.caching.dual_cache import DualCache
 from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
@@ -49,6 +50,7 @@ router = APIRouter()
 
 # 60s TTL is short enough that permission changes propagate quickly without
 # hammering the registry/DB on every UI render. Override via env in tests.
+CAPABILITIES_CACHE_TARGET: Final = "xct_capabilities"
 CAPABILITIES_CACHE_TTL = int(os.environ.get("LITELLM_CAPABILITIES_CACHE_TTL", "60"))
 # Singleton DualCache; populated lazily so test code can swap it.
 _capabilities_cache: DualCache | None = None
@@ -347,7 +349,8 @@ async def get_capabilities(
     cache = _get_capabilities_cache()
     cache_key = _capabilities_cache_key(user_api_key_dict)
 
-    hit = await cache.async_get_cache(cache_key)
+    with service_target(CAPABILITIES_CACHE_TARGET):
+        hit = await cache.async_get_cache(cache_key)
     if hit is not None:
         _record_cache_metric(hit=True)
         # DualCache stores either a Pydantic model or its dict form depending
@@ -377,7 +380,8 @@ async def get_capabilities(
     if not admin:
         response = await _intersect_with_app_capability_scope(response, user_api_key_dict)
 
-    await cache.async_set_cache(cache_key, response, ttl=CAPABILITIES_CACHE_TTL)
+    with service_target(CAPABILITIES_CACHE_TARGET):
+        await cache.async_set_cache(cache_key, response, ttl=CAPABILITIES_CACHE_TTL)
     return response
 
 
@@ -450,12 +454,13 @@ async def invalidate_capabilities_cache_for_caller(
     if the cache hasn't been initialized yet.
     """
     cache = _get_capabilities_cache()
-    try:
-        await cache.async_delete_cache(_capabilities_cache_key(user_api_key_dict))
-    except AttributeError:
-        # Older DualCache without async_delete_cache; fall back to set with
-        # a 1-second TTL, expiring within the next polling window.
-        await cache.async_set_cache(_capabilities_cache_key(user_api_key_dict), None, ttl=1)
+    with service_target(CAPABILITIES_CACHE_TARGET):
+        try:
+            await cache.async_delete_cache(_capabilities_cache_key(user_api_key_dict))
+        except AttributeError:
+            # Older DualCache without async_delete_cache; fall back to set with
+            # a 1-second TTL, expiring within the next polling window.
+            await cache.async_set_cache(_capabilities_cache_key(user_api_key_dict), None, ttl=1)
 
 
 # ============================================================================
@@ -561,7 +566,8 @@ async def _build_public_response() -> PublicCapabilitiesResponse:
 async def get_public_capabilities() -> PublicCapabilitiesResponse:
     """Anonymous discovery — only public-flagged entities. 5-min cache."""
     cache = _get_capabilities_cache()
-    hit = await cache.async_get_cache(_PUBLIC_CACHE_KEY)
+    with service_target(CAPABILITIES_CACHE_TARGET):
+        hit = await cache.async_get_cache(_PUBLIC_CACHE_KEY)
     if hit is not None:
         if isinstance(hit, PublicCapabilitiesResponse):
             return hit
@@ -569,5 +575,6 @@ async def get_public_capabilities() -> PublicCapabilitiesResponse:
             return PublicCapabilitiesResponse(**hit)
 
     response = await _build_public_response()
-    await cache.async_set_cache(_PUBLIC_CACHE_KEY, response, ttl=PUBLIC_CAPABILITIES_CACHE_TTL)
+    with service_target(CAPABILITIES_CACHE_TARGET):
+        await cache.async_set_cache(_PUBLIC_CACHE_KEY, response, ttl=PUBLIC_CAPABILITIES_CACHE_TTL)
     return response

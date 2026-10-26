@@ -75,3 +75,17 @@ def test_completion_entrypoint_rejects_video_model():
             messages=[{"role": "user", "content": "hi"}],
             api_key="sk-test",
         )
+
+
+def test_image_model_that_also_serves_chat_completions_passes_through(monkeypatch):
+    """Gemini image models list /v1/chat/completions in supported_endpoints, so the guard must not block them."""
+    monkeypatch.setitem(
+        litellm.model_cost,
+        "gemini/fake-image-chat-model",
+        {
+            "litellm_provider": "gemini",
+            "mode": "image_generation",
+            "supported_endpoints": ["/v1/chat/completions", "/v1/images/generations"],
+        },
+    )
+    _raise_if_generation_only_model(model="fake-image-chat-model", custom_llm_provider="gemini", model_info=None)
