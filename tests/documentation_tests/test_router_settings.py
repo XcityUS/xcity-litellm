@@ -12,9 +12,7 @@ def extract_documented_router_settings(content: str) -> frozenset[str]:
     )
     if section is None:
         return frozenset()
-    return frozenset(
-        re.findall(r"^[ \t]*\|[ \t]*`?([a-z][a-z0-9_]*)`?[ \t]*\|", section.group(1), re.MULTILINE)
-    )
+    return frozenset(re.findall(r"^[ \t]*\|[ \t]*`?([a-z][a-z0-9_]*)`?[ \t]*\|", section.group(1), re.MULTILINE))
 
 
 def main() -> None:
