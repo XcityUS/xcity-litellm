@@ -7,7 +7,7 @@ Debits the xct-wallet KWH ledger on every successful model call. KWH is a
 display layer over the wallet's integer `credit` unit (1 KWH = 100 credits =
 $0.10). The per-call charge carries a flat markup over upstream cost:
 
-    billed_credits = round(response_cost_usd * 1000 * markup)   # markup=1.8
+    billed_credits = round(response_cost_usd * 1000 * markup)   # markup=1.4
 
 The wallet debit is idempotent on the LiteLLM call id, so retries / duplicate
 callback fires never double-charge. This is post-hoc accounting that runs
@@ -33,7 +33,7 @@ from litellm.utils import get_end_user_id_for_cost_tracking
 
 # 1 USD = 1000 credits (wallet internal peg); KWH is credits/100.
 CREDITS_PER_USD = 1000
-DEFAULT_MARKUP = 1.8
+DEFAULT_MARKUP = 1.4
 
 # Wallet debit product must be one of the wallet's allowed enum values.
 _PRODUCT = "tokenhub"
