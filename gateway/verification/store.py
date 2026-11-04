@@ -32,6 +32,25 @@ class Verification(BaseModel):
     group_id: str | None = None
     cancelled_at: datetime | None = None
     attempts: int = 0
+    voice_url: str | None = None
+    voice_key: str | None = None
+    voice_language: str | None = None
+    voice_duration_ms: int | None = None
+    voice_consent_version: str | None = None
+    voice_consent_at: datetime | None = None
+    voice_submissions: int = 0
+    voice_submitted_at: datetime | None = None
+    voice_imported_at: datetime | None = None
+
+
+class VoiceSample(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    url: str
+    key: str
+    language: str
+    duration_ms: int
+    consent_version: str
 
 
 ROWS: Final = TypeAdapter(tuple[Verification, ...])
@@ -52,6 +71,8 @@ class VerificationRepository(Protocol):
     async def session(self, id: str, token: str, link: str, consent: str) -> None: ...
     async def complete(self, id: str, group: str) -> None: ...
     async def cancel(self, id: str) -> None: ...
+    async def voice(self, id: str, sample: VoiceSample) -> None: ...
+    async def voice_imported(self, id: str) -> None: ...
 
 
 class VerificationStore:
@@ -127,11 +148,36 @@ class VerificationStore:
     async def cancel(self, id: str) -> None:
         await self.db.execute_raw(f"UPDATE {TABLE} SET cancelled_at=now(),h5_link=NULL WHERE id=$1", id)
 
+    async def voice(self, id: str, sample: VoiceSample) -> None:
+        await self.db.execute_raw(
+            f"""UPDATE {TABLE} SET voice_url=$2,voice_key=$3,voice_language=$4,voice_duration_ms=$5::int,
+                voice_consent_version=$6,voice_consent_at=now(),voice_submissions=voice_submissions+1,
+                voice_submitted_at=now(),voice_imported_at=NULL WHERE id=$1""",
+            id,
+            sample.url,
+            sample.key,
+            sample.language,
+            sample.duration_ms,
+            sample.consent_version,
+        )
 
-def get_store() -> VerificationStore:
+    async def voice_imported(self, id: str) -> None:
+        await self.db.execute_raw(
+            f"UPDATE {TABLE} SET voice_imported_at=now() WHERE id=$1 AND voice_imported_at IS NULL", id
+        )
+
+
+def writer_db() -> VerificationSql | None:
     from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
-        raise HTTPException(503, "INVITATIONS_UNAVAILABLE")
+        return None
     db: Final = prisma_client.db
-    return VerificationStore(cast(VerificationSql, db.writer if isinstance(db, RoutingPrismaWrapper) else db))
+    return cast(VerificationSql, db.writer if isinstance(db, RoutingPrismaWrapper) else db)
+
+
+def get_store() -> VerificationStore:
+    db: Final = writer_db()
+    if db is None:
+        raise HTTPException(503, "INVITATIONS_UNAVAILABLE")
+    return VerificationStore(db)

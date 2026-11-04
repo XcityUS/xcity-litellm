@@ -1879,6 +1879,15 @@ model LiteLLM_AssetVerification {
   group_id        String?
   cancelled_at   DateTime? @client.Timestamptz(6)
   attempts        Int      @default(0)
+  voice_url             String?
+  voice_key             String?
+  voice_language        String?
+  voice_duration_ms     Int?
+  voice_consent_version String?
+  voice_consent_at      DateTime? @client.Timestamptz(6)
+  voice_submissions     Int       @default(0)
+  voice_submitted_at    DateTime? @client.Timestamptz(6)
+  voice_imported_at     DateTime? @client.Timestamptz(6)
 
   @@index([owner_id, created_at])
 }

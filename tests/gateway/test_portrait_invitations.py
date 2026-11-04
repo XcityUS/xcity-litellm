@@ -6,7 +6,9 @@ import os
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from types import MappingProxyType
 from typing import Final, Literal, cast
+from urllib.parse import unquote
 from uuid import uuid4
 
 import httpx
@@ -19,6 +21,7 @@ from gateway.routes.portrait_invitations import (
     CompleteInvitation,
     CreateInvitation,
     StartInvitation,
+    acknowledge_voice,
     cancel_invitation,
     complete_invitation,
     create_invitation,
@@ -28,7 +31,8 @@ from gateway.routes.portrait_invitations import (
 )
 from gateway.routes.provider_assets import VerificationResultRequest, resolve_verification_result
 from gateway.verification.service import CONSENT_VERSION, token_hash
-from gateway.verification.store import Verification, VerificationSql, VerificationStore, get_store
+from gateway.verification.store import Verification, VerificationSql, VerificationStore, VoiceSample, get_store
+from gateway.verification.voice import MediaWorker, get_media_worker
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 
@@ -101,6 +105,28 @@ class MemoryStore:
 
     async def cancel(self, id: str) -> None:
         self.update(id, {"cancelled_at": datetime.now(timezone.utc), "h5_link": None})
+
+    async def voice(self, id: str, sample: VoiceSample) -> None:
+        current: Final = await self.one("id", id)
+        now: Final = datetime.now(timezone.utc)
+        self.update(
+            id,
+            {
+                "voice_url": sample.url,
+                "voice_key": sample.key,
+                "voice_language": sample.language,
+                "voice_duration_ms": sample.duration_ms,
+                "voice_consent_version": sample.consent_version,
+                "voice_consent_at": now,
+                "voice_submissions": current.voice_submissions + 1,
+                "voice_submitted_at": now,
+                "voice_imported_at": None,
+            },
+        )
+
+    async def voice_imported(self, id: str) -> None:
+        current: Final = await self.one("id", id)
+        self.update(id, {"voice_imported_at": current.voice_imported_at or datetime.now(timezone.utc)})
 
 
 class ProviderFixture:
@@ -340,3 +366,202 @@ async def test_invitation_http_lifecycle_with_prisma_postgres() -> None:
     finally:
         await db.execute_raw('DELETE FROM "LiteLLM_AssetVerification" WHERE owner_id=$1', owner)
         await db.disconnect()
+
+
+WAV: Final = b"RIFF" + b"\x00" * 60
+
+
+class OwnerKeysFixture:
+    def __init__(self) -> None:
+        self.open: tuple[str, ...] = ()
+        self.issued: tuple[str, ...] = ()
+
+    @asynccontextmanager
+    async def issue(self, owner: str) -> AsyncGenerator[str]:
+        key: Final = f"temporary-{owner}-{len(self.issued)}"
+        self.issued = (*self.issued, owner)
+        self.open = (*self.open, key)
+        try:
+            yield key
+        finally:
+            self.open = tuple(item for item in self.open if item != key)
+
+
+class WorkerFixture:
+    def __init__(self, namespace: str | None = None) -> None:
+        self.namespace: Final = namespace
+        self.keys: Final = OwnerKeysFixture()
+        self.uploads: tuple[httpx.Request, ...] = ()
+        self.deleted: tuple[str, ...] = ()
+        self.worker: Final = MediaWorker(
+            self.keys, "https://media.example/", httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+        )
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        bearer: Final = request.headers["authorization"].removeprefix("Bearer ")
+        if bearer not in self.keys.open:
+            return httpx.Response(403, json={"error": "invalid or unauthorized key"})
+        owner: Final = self.namespace or "u/" + bearer.removeprefix("temporary-").rsplit("-", 1)[0]
+        if request.url.path == "/assets/delete":
+            self.deleted = (
+                *self.deleted,
+                TypeAdapter(str).validate_python(JSON_OBJECT.validate_json(request.content)["key"]),
+            )
+            return httpx.Response(200, json={"ok": True})
+        self.uploads = (*self.uploads, request)
+        key: Final = f"{owner}/audio/{hashlib.sha256(request.content).hexdigest()}.wav"
+        return httpx.Response(200, json={"url": f"https://media.example/media/{key}", "key": key})
+
+
+def voice_form(**changes: str) -> dict[str, str]:
+    return {
+        "token": TOKEN,
+        "language": "zh-CN",
+        "durationMs": "6123",
+        "consent": "true",
+        "consentVersion": "portrait-voice-v1",
+        **changes,
+    }
+
+
+@asynccontextmanager
+async def voice_client(store: MemoryStore, fixture: WorkerFixture) -> AsyncGenerator[httpx.AsyncClient]:
+    app: Final = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_media_worker] = lambda: fixture.worker
+    app.dependency_overrides[user_api_key_auth] = creator
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+
+
+async def submit(
+    client: httpx.AsyncClient, content_type: str = "audio/wav", form: Mapping[str, str] = MappingProxyType({})
+) -> httpx.Response:
+    return await client.post(
+        "/v1/provider-assets/invitations/voice",
+        data=voice_form(**form),
+        files={"file": ("voice.wav", WAV, content_type)},
+    )
+
+
+@pytest.mark.asyncio
+async def test_verified_guest_voice_is_filed_under_the_inviter_and_listed_only_for_them() -> None:
+    store: Final = MemoryStore(record(group_id="group-1"))
+    fixture: Final = WorkerFixture()
+    async with voice_client(store, fixture) as client:
+        response: Final = await submit(client)
+        assert response.status_code == 200
+        assert JSON_OBJECT.validate_json(response.content) == {"voiceStep": {"enabled": True, "submitted": True}}
+        upload: Final = fixture.uploads[0]
+        assert upload.content == WAV
+        assert upload.headers["content-type"] == "audio/wav"
+        assert unquote(upload.headers["x-asset-name"]) == "Actor · 本人录音"
+        assert fixture.keys.issued == ("creator",)
+        assert fixture.keys.open == ()
+        saved: Final = store.rows[0]
+        assert saved.voice_key is not None and saved.voice_key.startswith("u/creator/audio/")
+        assert saved.voice_consent_version == "portrait-voice-v1"
+        assert saved.voice_submissions == 1
+
+        inspected: Final = await client.post("/v1/provider-assets/invitations/inspect", json={"token": TOKEN})
+        assert JSON_OBJECT.validate_json(inspected.content)["voiceStep"] == {"enabled": True, "submitted": True}
+        assert saved.voice_url is not None and saved.voice_url not in inspected.text
+
+        listed: Final = await client.get("/v1/provider-assets/invitations")
+        rows: Final = TypeAdapter(tuple[dict[str, object], ...]).validate_python(
+            JSON_OBJECT.validate_json(listed.content)["invitations"]
+        )
+        assert JSON_OBJECT.validate_python(rows[0]["voice"]) == {
+            "url": saved.voice_url,
+            "language": "zh-CN",
+            "durationMs": 6123,
+            "submittedAt": saved.voice_submitted_at.isoformat() if saved.voice_submitted_at else None,
+            "importedAt": None,
+        }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changes,form,content_type,status,code",
+    [
+        ({}, {}, "audio/wav", 409, "VOICE_NEEDS_VERIFICATION"),
+        (
+            {"group_id": "group-1", "cancelled_at": datetime.now(timezone.utc)},
+            {},
+            "audio/wav",
+            410,
+            "INVITATION_CANCELLED",
+        ),
+        (
+            {"group_id": "group-1", "expires_at": datetime(2000, 1, 1, tzinfo=timezone.utc)},
+            {},
+            "audio/wav",
+            410,
+            "INVITATION_EXPIRED",
+        ),
+        ({"group_id": "group-1", "voice_submissions": 5}, {}, "audio/wav", 429, "VOICE_LIMIT_REACHED"),
+        ({"group_id": "group-1"}, {"consent": "false"}, "audio/wav", 400, "VOICE_CONSENT_REQUIRED"),
+        ({"group_id": "group-1"}, {"durationMs": "1500"}, "audio/wav", 400, "VOICE_INVALID"),
+        ({"group_id": "group-1"}, {}, "text/plain", 400, "VOICE_INVALID"),
+    ],
+)
+async def test_voice_is_refused_without_verification_consent_or_a_valid_sample(
+    changes: dict[str, object], form: dict[str, str], content_type: str, status: int, code: str
+) -> None:
+    store: Final = MemoryStore(record().model_copy(update=changes))
+    fixture: Final = WorkerFixture()
+    async with voice_client(store, fixture) as client:
+        response: Final = await submit(client, content_type, form)
+    assert response.status_code == status
+    assert JSON_OBJECT.validate_json(response.content)["detail"] == code
+    assert fixture.uploads == ()
+    assert store.rows[0].voice_url is None
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_did_not_land_in_the_inviters_namespace_is_not_recorded() -> None:
+    store: Final = MemoryStore(record(group_id="group-1"))
+    fixture: Final = WorkerFixture(namespace="k/unrelated")
+    async with voice_client(store, fixture) as client:
+        response: Final = await submit(client)
+    assert response.status_code == 503
+    assert JSON_OBJECT.validate_json(response.content)["detail"] == "VOICE_UNAVAILABLE"
+    assert store.rows[0].voice_url is None
+    assert fixture.keys.open == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("imported", [False, True])
+async def test_replacing_a_voice_removes_the_old_file_only_while_it_was_not_imported(imported: bool) -> None:
+    old: Final = "u/creator/audio/old.wav"
+    store: Final = MemoryStore(
+        record(
+            group_id="group-1",
+            voice_url=f"https://media.example/media/{old}",
+            voice_key=old,
+            voice_submissions=1,
+            voice_submitted_at=datetime.now(timezone.utc),
+            voice_imported_at=datetime.now(timezone.utc) if imported else None,
+        )
+    )
+    fixture: Final = WorkerFixture()
+    async with voice_client(store, fixture) as client:
+        assert (await submit(client)).status_code == 200
+    assert store.rows[0].voice_key != old
+    assert store.rows[0].voice_submissions == 2
+    assert store.rows[0].voice_imported_at is None
+    assert fixture.deleted == (() if imported else (old,))
+
+
+@pytest.mark.asyncio
+async def test_only_the_inviter_can_mark_their_invited_persons_voice_imported() -> None:
+    store: Final = MemoryStore(
+        record(group_id="group-1", voice_url="https://media.example/a.wav", voice_key="u/creator/audio/a.wav")
+    )
+    with pytest.raises(HTTPException) as caught:
+        await acknowledge_voice("invitation-1", UserAPIKeyAuth(user_id="other"), store)
+    assert caught.value.status_code == 404
+    assert store.rows[0].voice_imported_at is None
+    assert await acknowledge_voice("invitation-1", creator(), store) == {"status": "imported"}
+    assert store.rows[0].voice_imported_at is not None

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
+from types import MappingProxyType
 from typing import Final, Literal
 from urllib.parse import urlencode, urlparse
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from starlette.datastructures import FormData, UploadFile
+from typing_extensions import ReadOnly, TypedDict
 
 from gateway.providers.byteplus_assets import BytePlusAssetClient
 from gateway.routes.provider_assets import asset_owner, get_asset_client
@@ -20,7 +24,19 @@ from gateway.verification.service import (
     public_view,
     token_hash,
 )
-from gateway.verification.store import Verification, VerificationRepository, get_store
+from gateway.verification.store import Verification, VerificationRepository, VoiceSample, get_store
+from gateway.verification.voice import (
+    VOICE_CONSENT_VERSION,
+    VOICE_MAX_BYTES,
+    VOICE_TYPES,
+    MediaWorker,
+    VoiceStep,
+    accept_voice,
+    get_media_worker,
+    voice_name,
+    voice_step,
+    voice_view,
+)
 from litellm.proxy.auth.user_api_key_auth import UserAPIKeyAuth, user_api_key_auth
 
 router: Final = APIRouter(prefix="/v1/provider-assets/invitations", tags=["provider-assets"])
@@ -47,6 +63,49 @@ class StartInvitation(InvitationToken):
 
 class CompleteInvitation(InvitationToken):
     byted_token: str = Field(alias="bytedToken", min_length=1, max_length=8192)
+
+
+class VoiceFields(InvitationToken):
+    model_config = ConfigDict(frozen=True, extra="ignore")
+    language: str = Field(pattern=r"^[a-z]{2,3}(-[A-Za-z]{2,4})?$")
+    duration_ms: int = Field(alias="durationMs", ge=2000, le=600_000)
+
+
+class VoiceSubmitted(TypedDict):
+    voiceStep: ReadOnly[VoiceStep]
+
+
+class VoiceAcknowledged(TypedDict):
+    status: ReadOnly[Literal["imported"]]
+
+
+class VoiceUpload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    fields: VoiceFields
+    content: bytes
+    content_type: str
+
+
+def voice_fields(form: FormData) -> VoiceFields:
+    if form.get("consent") != "true" or form.get("consentVersion") != VOICE_CONSENT_VERSION:
+        raise HTTPException(400, "VOICE_CONSENT_REQUIRED")
+    try:
+        return VoiceFields.model_validate(form)
+    except ValidationError as exc:
+        raise HTTPException(400, "VOICE_INVALID") from exc
+
+
+async def read_voice_upload(request: Request) -> VoiceUpload:
+    async with request.form(max_files=1, max_fields=8) as form:
+        fields: Final = voice_fields(form)
+        file: Final = form.get("file")
+        if not isinstance(file, UploadFile):
+            raise HTTPException(400, "VOICE_INVALID")
+        content_type: Final = VOICE_TYPES.get((file.content_type or "").split(";")[0].strip().lower())
+        content: Final = await file.read(VOICE_MAX_BYTES + 1)
+    if content_type is None or not 44 <= len(content) <= VOICE_MAX_BYTES:
+        raise HTTPException(400, "VOICE_INVALID")
+    return VoiceUpload(fields=fields, content=content, content_type=content_type)
 
 
 @router.post("")
@@ -93,7 +152,8 @@ async def list_invitations(
 ) -> dict[str, object]:
     return {
         "invitations": tuple(
-            {**public_view(item), "groupId": item.group_id} for item in await store.list(asset_owner(auth))
+            {**public_view(item), "groupId": item.group_id, "voice": voice_view(item)}
+            for item in await store.list(asset_owner(auth))
         )
     }
 
@@ -117,10 +177,10 @@ async def cancel_invitation(
 @router.post("/inspect")
 async def inspect_invitation(
     body: InvitationToken, store: VerificationRepository = Depends(get_store)
-) -> dict[str, object]:
+) -> Mapping[str, object]:
     async with store.transaction() as transaction:
         record: Final = await transaction.one("token_hash", token_hash(body.token))
-        return public_view(record)
+        return MappingProxyType({**public_view(record), "voiceStep": voice_step(record)})
 
 
 @router.post("/start")
@@ -157,3 +217,45 @@ async def complete_invitation(
             raise HTTPException(403, "VERIFICATION_SESSION_MISMATCH")
         await finish(record, transaction, client)
         return {"status": "verified"}
+
+
+@router.post("/voice")
+async def submit_voice(
+    request: Request,
+    store: VerificationRepository = Depends(get_store),
+    media: MediaWorker = Depends(get_media_worker),
+) -> VoiceSubmitted:
+    upload: Final = await read_voice_upload(request)
+    async with store.transaction() as transaction:
+        record: Final = await transaction.one("token_hash", token_hash(upload.fields.token))
+        accept_voice(record)
+        stored: Final = await media.upload(record.owner_id, upload.content, upload.content_type, voice_name(record))
+        if stored is None:
+            raise HTTPException(503, "VOICE_UNAVAILABLE")
+        await transaction.voice(
+            record.id,
+            VoiceSample(
+                url=stored.url,
+                key=stored.key,
+                language=upload.fields.language,
+                duration_ms=upload.fields.duration_ms,
+                consent_version=VOICE_CONSENT_VERSION,
+            ),
+        )
+    if record.voice_key and record.voice_imported_at is None and record.voice_key != stored.key:
+        await media.delete(record.owner_id, record.voice_key)
+    return VoiceSubmitted(voiceStep=VoiceStep(enabled=True, submitted=True))
+
+
+@router.post("/{invitation_id}/voice/imported")
+async def acknowledge_voice(
+    invitation_id: str,
+    auth: UserAPIKeyAuth = Depends(user_api_key_auth),
+    store: VerificationRepository = Depends(get_store),
+) -> VoiceAcknowledged:
+    async with store.transaction() as transaction:
+        record: Final = await transaction.one("id", invitation_id)
+        if record.owner_id != asset_owner(auth) or record.voice_url is None:
+            raise HTTPException(404, "INVITATION_NOT_FOUND")
+        await transaction.voice_imported(record.id)
+    return VoiceAcknowledged(status="imported")
