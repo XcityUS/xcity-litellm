@@ -31,12 +31,12 @@ from gateway.verification.voice import (
     VOICE_TYPES,
     MediaWorker,
     VoiceStep,
-    accept_voice,
     get_media_worker,
     voice_name,
     voice_step,
     voice_view,
 )
+from gateway.verification.voice_uploads import reserve_voice_upload, save_voice_upload
 from litellm.proxy.auth.user_api_key_auth import UserAPIKeyAuth, user_api_key_auth
 
 router: Final = APIRouter(prefix="/v1/provider-assets/invitations", tags=["provider-assets"])
@@ -232,17 +232,15 @@ async def submit_voice(
     media: MediaWorker = Depends(get_media_worker),
 ) -> VoiceSubmitted:
     upload: Final = await read_voice_upload(request)
-    async with store.transaction() as transaction:
-        record: Final = await transaction.one("token_hash", token_hash(upload.fields.token))
-        accept_voice(record)
-    stored: Final = await media.upload(record.owner_id, upload.content, upload.content_type, voice_name(record))
-    if stored is None:
-        raise HTTPException(503, "VOICE_UNAVAILABLE")
-    async with store.transaction() as saving:
-        current: Final = await saving.one("id", record.id)
-        accept_voice(current)
-        await saving.voice(
-            current.id,
+    async with reserve_voice_upload(store, token_hash(upload.fields.token)) as reservation:
+        stored: Final = await media.upload(
+            reservation.record.owner_id, upload.content, upload.content_type, voice_name(reservation.record)
+        )
+        if stored is None:
+            raise HTTPException(503, "VOICE_UNAVAILABLE")
+        await save_voice_upload(
+            store,
+            reservation,
             VoiceSample(
                 url=stored.url,
                 key=stored.key,

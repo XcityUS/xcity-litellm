@@ -1888,6 +1888,8 @@ model LiteLLM_AssetVerification {
   voice_submissions     Int       @default(0)
   voice_submitted_at    DateTime? @client.Timestamptz(6)
   voice_imported_at     DateTime? @client.Timestamptz(6)
+  voice_upload_id       String?
+  voice_upload_expires_at DateTime? @client.Timestamptz(6)
 
   @@index([owner_id, created_at])
 }

@@ -41,6 +41,8 @@ class Verification(BaseModel):
     voice_submissions: int = 0
     voice_submitted_at: datetime | None = None
     voice_imported_at: datetime | None = None
+    voice_upload_id: str | None = None
+    voice_upload_expires_at: datetime | None = None
 
 
 class VoiceSample(BaseModel):
@@ -71,7 +73,9 @@ class VerificationRepository(Protocol):
     async def session(self, id: str, token: str, link: str, consent: str) -> None: ...
     async def complete(self, id: str, group: str) -> None: ...
     async def cancel(self, id: str) -> None: ...
-    async def voice(self, id: str, sample: VoiceSample) -> None: ...
+    async def reserve_voice(self, id: str, upload_id: str, seconds: int) -> bool: ...
+    async def release_voice(self, id: str, upload_id: str) -> None: ...
+    async def voice(self, id: str, sample: VoiceSample, upload_id: str) -> None: ...
     async def voice_imported(self, id: str) -> None: ...
 
 
@@ -148,18 +152,40 @@ class VerificationStore:
     async def cancel(self, id: str) -> None:
         await self.db.execute_raw(f"UPDATE {TABLE} SET cancelled_at=now(),h5_link=NULL WHERE id=$1", id)
 
-    async def voice(self, id: str, sample: VoiceSample) -> None:
+    async def reserve_voice(self, id: str, upload_id: str, seconds: int) -> bool:
+        changed: Final = await self.db.execute_raw(
+            f"""UPDATE {TABLE} SET voice_upload_id=$2,voice_upload_expires_at=now()+$3::int*interval '1 second'
+                WHERE id=$1 AND (voice_upload_id IS NULL OR voice_upload_expires_at IS NULL
+                OR voice_upload_expires_at<=now())""",
+            id,
+            upload_id,
+            seconds,
+        )
+        return changed == 1
+
+    async def release_voice(self, id: str, upload_id: str) -> None:
         await self.db.execute_raw(
+            f"UPDATE {TABLE} SET voice_upload_id=NULL,voice_upload_expires_at=NULL WHERE id=$1 AND voice_upload_id=$2",
+            id,
+            upload_id,
+        )
+
+    async def voice(self, id: str, sample: VoiceSample, upload_id: str) -> None:
+        changed: Final = await self.db.execute_raw(
             f"""UPDATE {TABLE} SET voice_url=$2,voice_key=$3,voice_language=$4,voice_duration_ms=$5::int,
                 voice_consent_version=$6,voice_consent_at=now(),voice_submissions=voice_submissions+1,
-                voice_submitted_at=now(),voice_imported_at=NULL WHERE id=$1""",
+                voice_submitted_at=now(),voice_imported_at=NULL,voice_upload_id=NULL,voice_upload_expires_at=NULL
+                WHERE id=$1 AND voice_upload_id=$7 AND voice_upload_expires_at>now()""",
             id,
             sample.url,
             sample.key,
             sample.language,
             sample.duration_ms,
             sample.consent_version,
+            upload_id,
         )
+        if changed != 1:
+            raise HTTPException(503, "VOICE_UNAVAILABLE")
 
     async def voice_imported(self, id: str) -> None:
         await self.db.execute_raw(

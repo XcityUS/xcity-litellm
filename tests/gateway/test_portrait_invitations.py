@@ -32,8 +32,16 @@ from gateway.routes.portrait_invitations import (
 )
 from gateway.routes.provider_assets import VerificationResultRequest, resolve_verification_result
 from gateway.verification.service import CONSENT_VERSION, token_hash
-from gateway.verification.store import Verification, VerificationSql, VerificationStore, VoiceSample, get_store
-from gateway.verification.voice import MediaWorker, get_media_worker
+from gateway.verification.store import (
+    Verification,
+    VerificationRepository,
+    VerificationSql,
+    VerificationStore,
+    VoiceSample,
+    get_store,
+)
+from gateway.verification.voice import VOICE_SUBMISSION_LIMIT, MediaWorker, get_media_worker
+from gateway.verification.voice_uploads import VOICE_UPLOAD_LEASE_SECONDS
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 
@@ -107,9 +115,28 @@ class MemoryStore:
     async def cancel(self, id: str) -> None:
         self.update(id, {"cancelled_at": datetime.now(timezone.utc), "h5_link": None})
 
-    async def voice(self, id: str, sample: VoiceSample) -> None:
+    async def reserve_voice(self, id: str, upload_id: str, seconds: int) -> bool:
         current: Final = await self.one("id", id)
         now: Final = datetime.now(timezone.utc)
+        if current.voice_upload_id and current.voice_upload_expires_at and current.voice_upload_expires_at > now:
+            return False
+        self.update(id, {"voice_upload_id": upload_id, "voice_upload_expires_at": now + timedelta(seconds=seconds)})
+        return True
+
+    async def release_voice(self, id: str, upload_id: str) -> None:
+        current: Final = await self.one("id", id)
+        if current.voice_upload_id == upload_id:
+            self.update(id, {"voice_upload_id": None, "voice_upload_expires_at": None})
+
+    async def voice(self, id: str, sample: VoiceSample, upload_id: str) -> None:
+        current: Final = await self.one("id", id)
+        now: Final = datetime.now(timezone.utc)
+        if (
+            current.voice_upload_id != upload_id
+            or not current.voice_upload_expires_at
+            or current.voice_upload_expires_at <= now
+        ):
+            raise HTTPException(503, "VOICE_UNAVAILABLE")
         self.update(
             id,
             {
@@ -122,6 +149,8 @@ class MemoryStore:
                 "voice_submissions": current.voice_submissions + 1,
                 "voice_submitted_at": now,
                 "voice_imported_at": None,
+                "voice_upload_id": None,
+                "voice_upload_expires_at": None,
             },
         )
 
@@ -430,7 +459,7 @@ def voice_form(**changes: str) -> dict[str, str]:
 
 
 @asynccontextmanager
-async def voice_client(store: MemoryStore, fixture: WorkerFixture) -> AsyncGenerator[httpx.AsyncClient]:
+async def voice_client(store: VerificationRepository, fixture: WorkerFixture) -> AsyncGenerator[httpx.AsyncClient]:
     app: Final = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_store] = lambda: store
@@ -645,3 +674,185 @@ async def test_slow_upload_does_not_hold_the_database_lock_and_rechecks_expiry()
     assert JSON_OBJECT.validate_json(response.content)["detail"] == "INVITATION_EXPIRED"
     assert store.rows[0].voice_url is None
     assert fixture.deleted == ()
+
+
+@pytest.mark.asyncio
+async def test_only_one_parallel_upload_uses_the_last_invitation_slot() -> None:
+    store: Final = MemoryStore(record(group_id="group-1", voice_submissions=VOICE_SUBMISSION_LIMIT - 1))
+    started: Final = asyncio.Event()
+    release: Final = asyncio.Event()
+    fixture: Final = WorkerFixture(gate=(started, release))
+    async with voice_client(store, fixture) as client:
+        first: Final = asyncio.create_task(submit(client))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        try:
+            others: Final = await asyncio.wait_for(asyncio.gather(*(submit(client) for _ in range(7))), timeout=2)
+            assert all(response.status_code == 503 for response in others)
+            assert len(fixture.keys.issued) == 1
+        finally:
+            release.set()
+        assert (await first).status_code == 200
+        assert (await submit(client)).status_code == 429
+    assert len(fixture.uploads) == 1
+    assert store.rows[0].voice_submissions == VOICE_SUBMISSION_LIMIT
+    assert store.rows[0].voice_upload_id is None
+
+
+@pytest.mark.asyncio
+async def test_failed_and_cancelled_uploads_release_the_slot_for_a_retry() -> None:
+    store: Final = MemoryStore(record(group_id="group-1"))
+    failed: Final = WorkerFixture(namespace="k/another-owner")
+    async with voice_client(store, failed) as client:
+        assert (await submit(client)).status_code == 503
+    assert store.rows[0].voice_submissions == 0
+    assert store.rows[0].voice_upload_id is None
+    started: Final = asyncio.Event()
+    release: Final = asyncio.Event()
+    blocked: Final = WorkerFixture(gate=(started, release))
+    async with voice_client(store, blocked) as client:
+        pending: Final = asyncio.create_task(submit(client))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+    assert store.rows[0].voice_submissions == 0
+    assert store.rows[0].voice_upload_id is None
+    async with voice_client(store, WorkerFixture()) as client:
+        assert (await submit(client)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_an_expired_reservation_can_be_reclaimed_without_a_stale_release_clearing_the_new_one() -> None:
+    store: Final = MemoryStore(
+        record(
+            group_id="group-1",
+            voice_upload_id="crashed-upload",
+            voice_upload_expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+    )
+    started: Final = asyncio.Event()
+    release: Final = asyncio.Event()
+    fixture: Final = WorkerFixture(gate=(started, release))
+    async with voice_client(store, fixture) as client:
+        pending: Final = asyncio.create_task(submit(client))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        current: Final = store.rows[0]
+        assert current.voice_upload_id and current.voice_upload_id != "crashed-upload"
+        assert current.voice_upload_expires_at and current.voice_upload_expires_at > datetime.now(timezone.utc)
+        await store.release_voice(current.id, "crashed-upload")
+        assert store.rows[0].voice_upload_id == current.voice_upload_id
+        release.set()
+        assert (await pending).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_an_upload_that_loses_its_reservation_cannot_replace_a_newer_recording() -> None:
+    store: Final = MemoryStore(record(group_id="group-1", voice_url="https://media.example/original.wav"))
+    started: Final = asyncio.Event()
+    release: Final = asyncio.Event()
+    fixture: Final = WorkerFixture(gate=(started, release))
+    async with voice_client(store, fixture) as client:
+        pending: Final = asyncio.create_task(submit(client))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        store.update(
+            "invitation-1",
+            {
+                "voice_upload_id": "replacement-upload",
+                "voice_upload_expires_at": datetime.now(timezone.utc) + timedelta(seconds=VOICE_UPLOAD_LEASE_SECONDS),
+            },
+        )
+        release.set()
+        assert (await pending).status_code == 503
+    assert store.rows[0].voice_url == "https://media.example/original.wav"
+    assert store.rows[0].voice_submissions == 0
+    assert store.rows[0].voice_upload_id == "replacement-upload"
+
+
+@asynccontextmanager
+async def postgres_voice_store() -> AsyncGenerator[tuple[VerificationStore, str, str]]:
+    database_url: Final = os.environ.get("PORTRAIT_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("PORTRAIT_TEST_DATABASE_URL is required for the PostgreSQL regression")
+    from prisma import Prisma
+    from prisma.types import DatasourceOverride
+
+    owner: Final = f"voice-lease-regression-{uuid4()}"
+    token: Final = uuid4().hex + "01234567890"
+    invitation_id: Final = f"voice-lease-{uuid4()}"
+    db: Final = Prisma(datasource=DatasourceOverride(url=database_url))
+    await db.connect()
+    store: Final = VerificationStore(cast(VerificationSql, db))
+    try:
+        await store.insert(
+            record(
+                id=invitation_id,
+                owner_id=owner,
+                token_hash=token_hash(token),
+                group_id="verified-group",
+            )
+        )
+        await db.execute_raw(
+            "UPDATE \"LiteLLM_AssetVerification\" SET group_id='verified-group',voice_submissions=$2::int WHERE id=$1",
+            invitation_id,
+            VOICE_SUBMISSION_LIMIT - 1,
+        )
+        yield store, invitation_id, token
+    finally:
+        await db.execute_raw('DELETE FROM "LiteLLM_AssetVerification" WHERE owner_id=$1', owner)
+        await db.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_postgres_serializes_upload_admission_without_holding_a_transaction_during_upload() -> None:
+    async with postgres_voice_store() as (store, invitation_id, token):
+        started: Final = asyncio.Event()
+        release: Final = asyncio.Event()
+        fixture: Final = WorkerFixture(gate=(started, release))
+        async with voice_client(store, fixture) as client:
+            first: Final = asyncio.create_task(submit(client, form={"token": token}))
+            await asyncio.wait_for(started.wait(), timeout=10)
+            try:
+                others: Final = await asyncio.wait_for(
+                    asyncio.gather(*(submit(client, form={"token": token}) for _ in range(7))),
+                    timeout=10,
+                )
+                assert all(response.status_code == 503 for response in others)
+                assert len(fixture.keys.issued) == 1
+                active: Final = await store.one("id", invitation_id)
+                assert active.voice_upload_id is not None
+                assert active.voice_upload_expires_at and active.voice_upload_expires_at.tzinfo is not None
+            finally:
+                release.set()
+            assert (await first).status_code == 200
+        saved: Final = await store.one("id", invitation_id)
+        assert saved.voice_submissions == VOICE_SUBMISSION_LIMIT
+        assert saved.voice_upload_id is None
+        assert len(fixture.uploads) == 1
+
+
+@pytest.mark.asyncio
+async def test_postgres_reclaims_expired_reservations_and_rejects_stale_writers() -> None:
+    async with postgres_voice_store() as (store, invitation_id, _token):
+        assert await store.reserve_voice(invitation_id, "first", VOICE_UPLOAD_LEASE_SECONDS)
+        assert not await store.reserve_voice(invitation_id, "parallel", VOICE_UPLOAD_LEASE_SECONDS)
+        await store.db.execute_raw(
+            "UPDATE \"LiteLLM_AssetVerification\" SET voice_upload_expires_at=now()-interval '1 second' WHERE id=$1",
+            invitation_id,
+        )
+        assert await store.reserve_voice(invitation_id, "second", VOICE_UPLOAD_LEASE_SECONDS)
+        await store.release_voice(invitation_id, "first")
+        assert (await store.one("id", invitation_id)).voice_upload_id == "second"
+        sample: Final = VoiceSample(
+            url="https://media.example/old.wav",
+            key="u/owner/audio/old.wav",
+            language="zh-CN",
+            duration_ms=6000,
+            consent_version="portrait-voice-v1",
+        )
+        with pytest.raises(HTTPException, match="VOICE_UNAVAILABLE"):
+            await store.voice(invitation_id, sample, "first")
+        saved: Final = await store.one("id", invitation_id)
+        assert saved.voice_url is None
+        assert saved.voice_submissions == VOICE_SUBMISSION_LIMIT - 1
+        await store.release_voice(invitation_id, "second")
+        assert (await store.one("id", invitation_id)).voice_upload_id is None
