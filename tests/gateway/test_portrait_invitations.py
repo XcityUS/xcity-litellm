@@ -20,6 +20,7 @@ from gateway.providers.byteplus_assets import BytePlusAssetClient, BytePlusAsset
 from gateway.routes.portrait_invitations import (
     CompleteInvitation,
     CreateInvitation,
+    ImportVoice,
     StartInvitation,
     acknowledge_voice,
     cancel_invitation,
@@ -388,8 +389,9 @@ class OwnerKeysFixture:
 
 
 class WorkerFixture:
-    def __init__(self, namespace: str | None = None) -> None:
+    def __init__(self, namespace: str | None = None, gate: tuple[asyncio.Event, asyncio.Event] | None = None) -> None:
         self.namespace: Final = namespace
+        self.gate: Final = gate
         self.keys: Final = OwnerKeysFixture()
         self.uploads: tuple[httpx.Request, ...] = ()
         self.deleted: tuple[str, ...] = ()
@@ -397,7 +399,7 @@ class WorkerFixture:
             self.keys, "https://media.example/", httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
         )
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    async def handle(self, request: httpx.Request) -> httpx.Response:
         bearer: Final = request.headers["authorization"].removeprefix("Bearer ")
         if bearer not in self.keys.open:
             return httpx.Response(403, json={"error": "invalid or unauthorized key"})
@@ -408,6 +410,9 @@ class WorkerFixture:
                 TypeAdapter(str).validate_python(JSON_OBJECT.validate_json(request.content)["key"]),
             )
             return httpx.Response(200, json={"ok": True})
+        if self.gate is not None:
+            self.gate[0].set()
+            await self.gate[1].wait()
         self.uploads = (*self.uploads, request)
         key: Final = f"{owner}/audio/{hashlib.sha256(request.content).hexdigest()}.wav"
         return httpx.Response(200, json={"url": f"https://media.example/media/{key}", "key": key})
@@ -533,7 +538,7 @@ async def test_a_file_that_did_not_land_in_the_inviters_namespace_is_not_recorde
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("imported", [False, True])
-async def test_replacing_a_voice_removes_the_old_file_only_while_it_was_not_imported(imported: bool) -> None:
+async def test_replacing_a_voice_keeps_a_sample_a_device_may_be_importing(imported: bool) -> None:
     old: Final = "u/creator/audio/old.wav"
     store: Final = MemoryStore(
         record(
@@ -551,17 +556,92 @@ async def test_replacing_a_voice_removes_the_old_file_only_while_it_was_not_impo
     assert store.rows[0].voice_key != old
     assert store.rows[0].voice_submissions == 2
     assert store.rows[0].voice_imported_at is None
-    assert fixture.deleted == (() if imported else (old,))
+    assert fixture.deleted == ()
 
 
 @pytest.mark.asyncio
 async def test_only_the_inviter_can_mark_their_invited_persons_voice_imported() -> None:
+    submitted_at: Final = datetime.now(timezone.utc)
+    body: Final = ImportVoice(url="https://media.example/a.wav", submittedAt=submitted_at)
     store: Final = MemoryStore(
-        record(group_id="group-1", voice_url="https://media.example/a.wav", voice_key="u/creator/audio/a.wav")
+        record(
+            group_id="group-1",
+            voice_url=body.url,
+            voice_key="u/creator/audio/a.wav",
+            voice_submitted_at=submitted_at,
+        )
     )
     with pytest.raises(HTTPException) as caught:
-        await acknowledge_voice("invitation-1", UserAPIKeyAuth(user_id="other"), store)
+        await acknowledge_voice("invitation-1", body, UserAPIKeyAuth(user_id="other"), store)
     assert caught.value.status_code == 404
     assert store.rows[0].voice_imported_at is None
-    assert await acknowledge_voice("invitation-1", creator(), store) == {"status": "imported"}
+    assert await acknowledge_voice("invitation-1", body, creator(), store) == {"status": "imported"}
     assert store.rows[0].voice_imported_at is not None
+    confirmed_at: Final = store.rows[0].voice_imported_at
+    assert await acknowledge_voice("invitation-1", body, creator(), store) == {"status": "imported"}
+    assert store.rows[0].voice_imported_at == confirmed_at
+
+
+@pytest.mark.asyncio
+async def test_an_old_import_cannot_acknowledge_a_replacement_recording() -> None:
+    old: Final = "u/creator/audio/old.wav"
+    submitted_at: Final = datetime.now(timezone.utc) - timedelta(minutes=1)
+    store: Final = MemoryStore(
+        record(
+            group_id="group-1",
+            voice_key=old,
+            voice_url=f"https://media.example/media/{old}",
+            voice_submitted_at=submitted_at,
+        )
+    )
+    fixture: Final = WorkerFixture()
+    async with voice_client(store, fixture) as client:
+        assert (await submit(client)).status_code == 200
+        response: Final = await client.post(
+            "/v1/provider-assets/invitations/invitation-1/voice/imported",
+            json={"url": f"https://media.example/media/{old}", "submittedAt": submitted_at.isoformat()},
+        )
+        assert response.status_code == 409
+        assert JSON_OBJECT.validate_json(response.content)["detail"] == "VOICE_CHANGED"
+        assert store.rows[0].voice_imported_at is None
+        current: Final = store.rows[0]
+        missing_version: Final = await client.post("/v1/provider-assets/invitations/invitation-1/voice/imported")
+        assert missing_version.status_code == 422
+        same_url_old_version: Final = await client.post(
+            "/v1/provider-assets/invitations/invitation-1/voice/imported",
+            json={"url": current.voice_url, "submittedAt": submitted_at.isoformat()},
+        )
+        assert same_url_old_version.status_code == 409
+        assert current.voice_submitted_at is not None
+        confirmed: Final = await client.post(
+            "/v1/provider-assets/invitations/invitation-1/voice/imported",
+            json={"url": current.voice_url, "submittedAt": current.voice_submitted_at.isoformat()},
+        )
+        assert confirmed.status_code == 200
+    assert fixture.deleted == ()
+    assert store.rows[0].voice_imported_at is not None
+
+
+@pytest.mark.asyncio
+async def test_slow_upload_does_not_hold_the_database_lock_and_rechecks_expiry() -> None:
+    store: Final = MemoryStore(record(group_id="group-1"))
+    started: Final = asyncio.Event()
+    release: Final = asyncio.Event()
+    fixture: Final = WorkerFixture(gate=(started, release))
+    async with voice_client(store, fixture) as client:
+        upload: Final = asyncio.create_task(submit(client))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        try:
+            inspected: Final = await asyncio.wait_for(
+                client.post("/v1/provider-assets/invitations/inspect", json={"token": TOKEN}), timeout=2
+            )
+            assert inspected.status_code == 200
+            async with store.transaction() as transaction:
+                transaction.update("invitation-1", {"expires_at": datetime(2000, 1, 1, tzinfo=timezone.utc)})
+        finally:
+            release.set()
+        response: Final = await upload
+    assert response.status_code == 410
+    assert JSON_OBJECT.validate_json(response.content)["detail"] == "INVITATION_EXPIRED"
+    assert store.rows[0].voice_url is None
+    assert fixture.deleted == ()

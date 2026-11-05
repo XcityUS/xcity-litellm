@@ -9,7 +9,7 @@ from urllib.parse import urlencode, urlparse
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import FormData, UploadFile
 from typing_extensions import ReadOnly, TypedDict
 
@@ -77,6 +77,12 @@ class VoiceSubmitted(TypedDict):
 
 class VoiceAcknowledged(TypedDict):
     status: ReadOnly[Literal["imported"]]
+
+
+class ImportVoice(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    url: str = Field(pattern=r"^https://", max_length=2048)
+    submitted_at: AwareDatetime = Field(alias="submittedAt")
 
 
 class VoiceUpload(BaseModel):
@@ -229,11 +235,14 @@ async def submit_voice(
     async with store.transaction() as transaction:
         record: Final = await transaction.one("token_hash", token_hash(upload.fields.token))
         accept_voice(record)
-        stored: Final = await media.upload(record.owner_id, upload.content, upload.content_type, voice_name(record))
-        if stored is None:
-            raise HTTPException(503, "VOICE_UNAVAILABLE")
-        await transaction.voice(
-            record.id,
+    stored: Final = await media.upload(record.owner_id, upload.content, upload.content_type, voice_name(record))
+    if stored is None:
+        raise HTTPException(503, "VOICE_UNAVAILABLE")
+    async with store.transaction() as saving:
+        current: Final = await saving.one("id", record.id)
+        accept_voice(current)
+        await saving.voice(
+            current.id,
             VoiceSample(
                 url=stored.url,
                 key=stored.key,
@@ -242,14 +251,13 @@ async def submit_voice(
                 consent_version=VOICE_CONSENT_VERSION,
             ),
         )
-    if record.voice_key and record.voice_imported_at is None and record.voice_key != stored.key:
-        await media.delete(record.owner_id, record.voice_key)
     return VoiceSubmitted(voiceStep=VoiceStep(enabled=True, submitted=True))
 
 
 @router.post("/{invitation_id}/voice/imported")
 async def acknowledge_voice(
     invitation_id: str,
+    body: ImportVoice,
     auth: UserAPIKeyAuth = Depends(user_api_key_auth),
     store: VerificationRepository = Depends(get_store),
 ) -> VoiceAcknowledged:
@@ -257,5 +265,7 @@ async def acknowledge_voice(
         record: Final = await transaction.one("id", invitation_id)
         if record.owner_id != asset_owner(auth) or record.voice_url is None:
             raise HTTPException(404, "INVITATION_NOT_FOUND")
+        if record.voice_url != body.url or record.voice_submitted_at != body.submitted_at:
+            raise HTTPException(409, "VOICE_CHANGED")
         await transaction.voice_imported(record.id)
     return VoiceAcknowledged(status="imported")
