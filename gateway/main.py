@@ -10,9 +10,17 @@ Run with:
 """
 
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Final
 
+from fastapi import FastAPI
 from fastapi.routing import Mount
+from starlette.middleware.cors import CORSMiddleware
+from starlette.routing import BaseRoute
+
+import litellm
+from litellm.constants import LITELLM_UI_ALLOW_HEADERS
 
 # Assemble DATABASE_URL (+ DATABASE_URL_READ_REPLICA) from the discrete
 # DATABASE_* env vars before proxy_server imports spin up Prisma. Handles
@@ -34,22 +42,23 @@ from gateway.routes.drama import router as drama_router
 from gateway.routes.portrait_invitations import router as portrait_invitations_router
 from gateway.routes.provider_assets import router as provider_assets_router
 from gateway.settings import GatewaySettings
-from litellm.proxy.proxy_server import app
+from litellm.proxy.proxy_server import allow_cors_credentials, origins
+from litellm.proxy.proxy_server import app as _proxy_app
 
-app.include_router(drama_router)
-app.include_router(portrait_invitations_router)
-app.include_router(provider_assets_router)
+_proxy_app.include_router(drama_router)
+_proxy_app.include_router(portrait_invitations_router)
+_proxy_app.include_router(provider_assets_router)
 
 
-def _is_gateway_route(route) -> bool:
+def _is_gateway_route(route: BaseRoute) -> bool:
     """Keep the route on the gateway if its path is in the LLM data-plane surface.
 
     Prometheus registers /metrics as a Mount (``app.mount("/metrics", make_asgi_app())``),
     so Mounts are matched against GATEWAY_MOUNT_PATHS instead of being dropped with
     the UI static mounts.
     """
-    path = getattr(route, "path", None)
-    if path is None:
+    path: Final[object] = getattr(route, "path", None)
+    if not isinstance(path, str):
         return False
     if isinstance(route, Mount):
         return path in GATEWAY_MOUNT_PATHS
@@ -63,15 +72,25 @@ def _is_gateway_route(route) -> bool:
 # register routes. A module-load filter would miss routes added during
 # startup; running inside the lifespan, after the inner __aenter__, catches
 # them while still completing before uvicorn opens the listener.
-_proxy_lifespan = app.router.lifespan_context
+_proxy_lifespan: Final = _proxy_app.router.lifespan_context
 
 
 @asynccontextmanager
-async def _gateway_lifespan(app_):
+async def _gateway_lifespan(app_: FastAPI) -> AsyncGenerator[None]:
     async with _proxy_lifespan(app_):
-        mode = GatewaySettings.from_env(os.environ)
+        if litellm.sse_keepalive_ping_interval_seconds is None:
+            litellm.sse_keepalive_ping_interval_seconds = 15.0
+        mode: Final = GatewaySettings.from_env(os.environ)
         app_.router.routes = list(select_routes(app_.router.routes, _is_gateway_route, mode.serve_full_proxy))
         yield
 
 
-app.router.lifespan_context = _gateway_lifespan
+_proxy_app.router.lifespan_context = _gateway_lifespan
+app: Final = CORSMiddleware(
+    _proxy_app,
+    allow_origins=origins,
+    allow_credentials=allow_cors_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=LITELLM_UI_ALLOW_HEADERS,
+)
